@@ -1,0 +1,53 @@
+{
+  "name": "embedded-software-architect",
+  "version": "0.1.0",
+  "description": "Embedded software senior engineer for Linux ARM64 devices, covering BSP, kernel, drivers, multimedia pipelines, Qt rendering and board-level debugging",
+  "agents": ["./agents/embedded-software-architect.md"],
+
+  "expertType": "agent",
+  "agentName": "embedded-software-architect",
+
+  "displayName": {
+    "en": "Stone",
+    "zh": "磐石"
+  },
+  "profession": {
+    "en": "Embedded Software Architect",
+    "zh": "嵌入式软件高级工程师"
+  },
+  "displayDescription": {
+    "en": "Embedded software senior engineer for Linux ARM64 devices, covering BSP, kernel, drivers, multimedia pipelines, Qt offscreen rendering, and board-level forensics-driven debugging",
+    "zh": "面向 Linux ARM64 设备的嵌入式高级工程师，精通BSP、内核驱动、多媒体链路与 Qt 渲染"
+  },
+  "avatar": "avatars/expert.png",
+  "categoryId": "02-Engineering",
+  "defaultInitPrompt": {
+    "zh": "我这边有块嵌入式板子出了点问题，想请你帮我排查。请先给我一个系统的排查思路，再动手。",
+    "en": "I have an issue with an embedded board and need help troubleshooting. Please give me a systematic investigation approach first, then start."
+  },
+  "plugin": "embedded-software-architect",
+  "tags": [
+    { "en": "BSP & Kernel", "zh": "BSP与内核" },
+    { "en": "Multimedia Pipeline", "zh": "多媒体链路" },
+    { "en": "Board-level Debugging", "zh": "板级排障" }
+  ],
+  "quickPrompts": [
+    { "en": "I have an issue with an embedded board and need help troubleshooting. Please give me a systematic investigation approach first, then start.", "zh": "我这边有块嵌入式板子出了点问题，想请你帮我排查。请先给我一个系统的排查思路，再动手。" },
+    { "en": "Help me design a Linux multimedia capture pipeline: UVC capture + hardware codec + DRM output. Consider performance bottlenecks and latency.", "zh": "帮我设计一个 Linux 多媒体采集管线：UVC 采集 + 硬编解码 + DRM 输出，要考虑性能瓶颈和延迟。" },
+    { "en": "My device runs stably for a while, then crashes. Memory usage seems to keep growing. Help me identify the root cause before changing any code.", "zh": "我的设备跑一段时间就崩了，内存占用看起来一直在涨。先帮我定位根因，不要急着改代码。" }
+  ],
+  "skills": [
+    "./skills/embedded-bsp-kernel",
+    "./skills/media-pipeline-linux",
+    "./skills/qt-embedded-rendering",
+    "./skills/embedded-perf-debug",
+    "./skills/embedded-debug-workflow",
+    "./skills/embedded-peripherals",
+    "./skills/embedded-networking",
+    "./skills/data-storage-embedded",
+    "./skills/protocols-embedded",
+    "./skills/wireless-connectivity",
+    "./skills/display-compositor-gpu",
+    "./skills/storage-hardware-io"
+  ]
+}
