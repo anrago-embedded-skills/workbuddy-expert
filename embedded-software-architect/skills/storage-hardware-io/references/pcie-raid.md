@@ -1,19 +1,21 @@
-# PCIe / SATA / MIPI / RAID 参考
+# PCIe / SATA / NVMe / RAID 参考
 
-> 存储与硬件总线的通用排查方法。
+> 仅在 PCIe 链路协商、SATA/NVMe 健康检查、RAID 状态或有界普通文件基准需要补充步骤时加载。以下均为 TARGET Linux；工具/字段依内核和 rootfs 而异。该页不覆盖 MIPI 或应用运行时。
 
 ## PCIe
 
 ```bash
+# TARGET / read-only; requires pciutils and access to kernel logs.
 # 枚举
 lspci -nn
 dmesg | grep -i pcie
 
 # 链路状态与速率（关键）
-lspci -vvv -s <dev> | grep -E "LnkSta|LnkCap"
+: "${PCI_ADDRESS:?set PCI_ADDRESS from lspci -nn}"
+lspci -vvv -s "$PCI_ADDRESS" | grep -E "LnkSta|LnkCap"
 ```
 
-**`LnkSta` 显示的实际速率**要与 `LnkCap` 对比——**降速运行是常见坑**（如 Gen3 设备跑在 Gen2 链路）。
+预期 `LnkSta` 给出当前协商速率和宽度，`LnkCap` 给出该 function 的能力。字段缺失或读取失败可能是设备未枚举、权限/工具/配置差异；须比较 endpoint 与 root port，并核对该 SKU/插槽/BSP 规格。低于能力值表示链路存在限制的候选，不能单独归因于信号完整性或供电。
 
 | 字段 | 含义 |
 |---|---|
@@ -22,18 +24,47 @@ lspci -vvv -s <dev> | grep -E "LnkSta|LnkCap"
 | `LnkSta` | 实际状态 |
 | `LnkCap` | 能力上限 |
 
-**关键**：实际值低于能力值 = 链路协商受限（插槽、信号完整性、供电）。
+对比实际值与双方能力可以确定协商低于能力，但具体原因仍需原理图、供电/复位、启动日志及板级规格证据。
 
 ## SATA / NVMe
 
 ```bash
+# TARGET / read-only health queries; identify the node from `lsblk` first.
 lsblk -d
-smartctl -a /dev/sda
-nvme smart-log /dev/nvme0
-
-# 性能实测（不要只看规格）
-fio --name=seqwrite --filename=/dev/sdX --direct=1 --bs=1M --rw=write --size=1G
 ```
+
+```bash
+# TARGET / read-only SATA/USB SMART query; set a device confirmed by `lsblk`.
+: "${CONFIRMED_SATA_DEVICE:?set to the intended SATA device}"
+smartctl -a "$CONFIRMED_SATA_DEVICE"
+```
+
+```bash
+# TARGET / read-only NVMe query; requires nvme-cli and an enumerated controller.
+: "${CONFIRMED_NVME_CONTROLLER:?set to an enumerated NVMe controller}"
+nvme smart-log "$CONFIRMED_NVME_CONTROLLER"
+```
+
+### 有界文件性能测试（可选）
+
+以下是可选 TARGET shell 模板。仅向明确指定的 scratch 文件系统中的普通文件写最多 512 MiB；`runtime=30` 限制 I/O 阶段为 30 秒或直到 workload 完成，先到即停止。没有 `time_based`，不会重复写来填满时长；结束同步可能使总用时超过 30 秒。运行前核对目标挂载、至少 1 GiB 可用空间和设备当前负载；不要将块设备节点、系统盘或 RAID 成员作为 fio 文件名。要求 fio 版本支持这些选项。
+
+```bash
+(
+  SCRATCH_DIR=/mnt/bench-scratch  # set to a verified scratch filesystem mount
+  test -d "$SCRATCH_DIR" && test -w "$SCRATCH_DIR" || exit 1
+  df -h "$SCRATCH_DIR"           # verify mount and >= 1 GiB free
+  free -h
+  FIO_FILE="$(mktemp "${SCRATCH_DIR%/}/fio-seqwrite.XXXXXX")" || exit 1
+  trap 'rm -f -- "$FIO_FILE"' EXIT HUP INT TERM
+  fio --name=seqwrite --filename="$FIO_FILE" --direct=1 --bs=1M \
+    --rw=write --size=512M --io_size=512M --runtime=30 --end_fsync=1
+  FIO_STATUS=$?
+  exit "$FIO_STATUS"
+)
+```
+
+预期输出包含写入量、I/O 阶段时长与结束同步结果；非零退出或 I/O 错误表示该测试配置/目标失败，仍需结合内核/介质/文件系统证据定层。测试只在新建普通文件中写入最多 512 MiB，I/O 阶段最长 30 秒，`end_fsync`/初始化/清理另计。没有 `time_based`，因此不重复填满时长。仅主机 fio 结果不等于目标设备结果。
 
 ### AHCI 与 NVMe
 
@@ -48,13 +79,15 @@ fio --name=seqwrite --filename=/dev/sdX --direct=1 --bs=1M --rw=write --size=1G
 ## RAID（mdadm）
 
 ```bash
+# TARGET / read-only md status queries.
+: "${CONFIRMED_MD_DEVICE:?set to the intended md device}"
 cat /proc/mdstat
-mdadm --detail /dev/md0
-mdadm --stop /dev/md0
-
-# 监控（写入 cron/看门狗）
-mdadm --monitor --scan --daemonise
+mdadm --detail "$CONFIRMED_MD_DEVICE"
 ```
+
+`mdadm --stop` 会改变阵列状态，不能用于查看状态。只有当已授权的维护范围明确要求停止已确认的阵列时，才按设备文档操作；先确认阵列成员、挂载点、swap 和使用者。
+
+`mdadm --monitor --scan --daemonise` 会启动后台监控进程；只有在部署范围需要持续监控时，才将其纳入服务配置。
 
 ### 阵列对比
 
@@ -67,50 +100,17 @@ mdadm --monitor --scan --daemonise
 
 ### 关键注意
 
-- **必须预留备盘**（rebuild 空间），否则重建失败
+- 提前规划兼容的替换盘或热备盘；替换设备可用容量需满足阵列成员要求，是否可在线重建取决于阵列级别和配置
 - **RAID 5 写惩罚**：小写入触发 read-modify-write，大幅降速
 - **重建期性能显著下降**，避免高峰期大量 IO
 - 嵌入式需做**阵列健康上报**（SMART + /proc/mdstat 状态）
-
-## MIPI
-
-### MIPI-CSI（摄像头）
-
-```bash
-media-ctl -p                # 看完整拓扑与 link
-v4l2-ctl -d /dev/video0 --list-formats-ext
-```
-
-### MIPI-DSI（显示）
-
-```bash
-modetest -c                # 查 connector 与 mode
-cat /sys/kernel/debug/dri/0/state
-```
-
-### 关键注意
-
-- **lane 数与速率决定带宽**：计算 `lane × 速率` 是否够用
-- **DSI 时序参数必须匹配面板**：错误会黑屏/花屏
-- **CSI 多虚拟通道**：多摄像头时注意通道与带宽分配
-
-## Docker 容器化
-
-```bash
-docker run -d --name app --restart always \
-  -v /data/config:/app/config \
-  --memory=512m --cpus=1.5 \
-  myapp:latest
-
-docker stats                # 实时资源
-docker logs -f app
-```
-
-**关键**：嵌入式必须设 `--memory` / `--cpus`，否则容器吃光资源导致宿主 OOM。
 
 ## 边界
 
 - PCIe 降速、RAID 重建降速都是隐蔽性能问题
 - SMART/寿命需定期监控，不能等到坏了
-- MIPI 时序错直接黑屏，先查面板参数
-- Docker 资源限制必须设，这是嵌入式容器化的底线
+
+## 主要参考
+
+- fio documentation, `filename` and `size`: https://fio.readthedocs.io/en/latest/fio_doc.html
+- `mdadm(8)` manual: https://man7.org/linux/man-pages/man8/mdadm.8.html

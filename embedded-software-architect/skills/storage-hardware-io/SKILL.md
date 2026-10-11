@@ -1,34 +1,56 @@
 ---
 name: storage-hardware-io
 description: |
-  Storage buses and hardware IO: RAID(mdadm), PCIe link negotiation, SATA/NVMe, MIPI DSI/CSI, Docker deployment, thread/async runtime, nginx.
-  TRIGGER when: RAID、mdadm、/proc/mdstat、软raid、PCIe、pcie、lspci、LnkSta、SATA、AHCI、NVMe、smartctl、MIPI、MIPI-DSI、MIPI-CSI、lane、Docker、docker、容器化、镜像、多线程、线程绑核、taskset、chrt、优先级、异步、epoll、nginx、反向代理、worker_connections、盘挂了、阵列坏了、RAID 坏了、硬盘掉线、PCIe 不通、SATA 不识别、插不上、识别不了硬盘、容器起不来、docker 挂了、线程假死、事件循环卡、nginx 起不来、磁盘满了、硬盘满了、盘挂了、阵列坏了、RAID 挂了、硬盘掉线、docker起不来、容器起不来、容器挂了、docker 崩了、nginx 起不来、进程假死、RAID挂了、阵列降级、RAID重建、盘没认到、,
-  DO NOT TRIGGER when: 内存/性能瓶颈定位（用 embedded-perf-debug）；Qt 渲染后端（用 display-compositor-gpu）,
+  主技能：PCIe/SATA/NVMe/RAID 与块设备的枚举、链路协商、健康状态和有界文件基准。MIPI 媒体链路归媒体技能；Docker、线程或 nginx 应用运行时归通用调试技能。
 ---
 
 # storage-hardware-io
 
-> 存储与硬件 IO：RAID、PCIe、SATA、MIPI、Docker 容器化部署。平台适配见 `references/`。
+> PCIe/SATA/NVMe/RAID 与块设备排查。平台适配和补充方法见按需读取的 `references/`。
 
 ## 适用范围
 
-板级存储/总线扩展、大容量存储管理、容器化应用部署。
+板级存储/PCIe 总线扩展、块设备发现与健康检查、RAID 管理和有界文件性能诊断。
+
+## 主技能选择与分流
+
+当任务需要枚举 PCIe/SATA/NVMe/块设备，检查链路协商、SMART/NVMe 健康或 RAID 状态，或执行经确认的有界普通文件基准时，选择本技能。SQLite/WAL 增长、文件持久化、卷接近写满或应用写入路径问题从 [data-storage-embedded](../data-storage-embedded/SKILL.md) 开始；只有证据显示块设备发现、健康或 I/O 故障时才用本技能。容器内存耗尽或 CPU/内存压力转到 [embedded-perf-debug](../embedded-perf-debug/SKILL.md)；Docker 部署、nginx、POSIX 线程或 epoll 应用问题从 [embedded-debug-workflow](../embedded-debug-workflow/SKILL.md) 开始；MIPI-CSI/DSI 媒体链路从 [media-pipeline-linux](../media-pipeline-linux/SKILL.md) 开始。内核 IRQ/workqueue/驱动锁证据转到 [linux-device-drivers](../linux-device-drivers/SKILL.md)。
+
+## 任务输入、证据分支与交付
+
+记录目标设备/内核、介质准确型号与总线、设备节点和分区、拓扑/阵列状态、运行时 I/O 错误、挂载点/文件系统、当前业务负载和采样窗口。PCIe 先取得两端能力与当前协商状态；SMART/NVMe 读数按介质型号解释；fio 只能从明确选定的 scratch 文件系统开始。
+
+| 证据 | 主查分支 |
+|---|---|
+| 设备未枚举、链接 down 或协商低于预期 | 对齐 PCIe root port/endpoint 能力、`dmesg` 和 sysfs 设备关系；检查设备树/BSP/供电时再转驱动/BSP |
+| 块设备可见但出现 EIO、超时或介质错误计数变化 | 按 SATA/NVMe/eMMC 驱动接口和介质手册查健康日志、错误计数、固件/温度/链路；文件持久化语义由 [data-storage-embedded](../data-storage-embedded/SKILL.md) 分析 |
+| RAID 降级、重建或 md 设备 I/O 异常 | 采集 `/proc/mdstat` 与 `mdadm --detail`、成员状态和当前重建阶段；状态命令不自动启动/停止阵列 |
+| 应用写入或数据库恢复异常但块层无错误 | 返回应用数据路径，不以一次 fio 吞吐测试诊断 SQLite/文件系统耐久性 |
+
+交付拓扑、设备与内核版本、只读状态采样、证据支持的最小变更、如执行 fio 则记录完整配置/返回码/I/O 字节数/结束同步时间，以及重复负载下的验收。跨领域记录和验证层级按需引用 [工程工作流](../embedded-debug-workflow/references/engineering-workflow.md) 与 [验证策略](../embedded-debug-workflow/references/validation-policy.md)。
+
+## 命令环境
+
+下列设备命令默认在 **TARGET Linux**，并要求相应工具、设备节点权限和内核接口。`<...>` 是模板，先从实际枚举结果替换。`lspci`/`lsblk`/SMART 日志读取及 `mdadm --detail` 是状态检查；`smartctl -t short` 会启动设备自测；fio 会向普通 scratch 文件写数据。写测前核对挂载、空闲空间、当前负载和产品允许的写入量。
 
 ---
 
 ## PCIe
 
 ```bash
-# 枚举设备
+# TARGET / read-only; requires pciutils and permission to read kernel logs.
 lspci -nn
 dmesg | grep -i pcie
 
 # 链路状态与速率
-lspci -vvv -s <dev> | grep -E "LnkSta|LnkCap"
+: "${PCI_ADDRESS:?set PCI_ADDRESS from lspci -nn}"
+lspci -vvv -s "$PCI_ADDRESS" | grep -E "LnkSta|LnkCap"
 
 # BAR 空间
 cat /sys/bus/pci/devices/*/resource
 ```
+
+Expected `LnkSta` gives negotiated speed/width and `LnkCap` the function's capabilities. Compare endpoint and root port plus board specifications; missing device/fields or permission errors mean current tooling/target does not expose the needed evidence. A lower negotiated value is a restriction candidate, not proof of a particular electrical cause.
 
 ### 要点
 
@@ -41,14 +63,50 @@ cat /sys/bus/pci/devices/*/resource
 ## SATA / NVMe
 
 ```bash
-# 设备与健康
+# TARGET / read-only inventory; identify actual device type and node.
 lsblk
-smartctl -a /dev/sda
-smartctl -t short /dev/sda && smartctl -l selftest /dev/sda   # 短测自检
-
-# 实际性能
-fio --name=seqwrite --filename=/dev/sdX --direct=1 --bs=1M --rw=write
 ```
+
+```bash
+# TARGET / read-only SATA/USB SMART query; replace after `lsblk`.
+: "${CONFIRMED_SATA_DEVICE:?set to a SATA device confirmed by lsblk}"
+smartctl -a "$CONFIRMED_SATA_DEVICE"
+```
+
+```bash
+# TARGET / read-only NVMe query; requires nvme-cli and an enumerated controller.
+: "${CONFIRMED_NVME_CONTROLLER:?set to a confirmed NVMe controller}"
+nvme smart-log "$CONFIRMED_NVME_CONTROLLER"
+```
+
+预期输出实际设备识别信息和可用健康字段；设备未识别、权限不足、工具不支持或 SMART 被桥接/固件屏蔽时记录限制，不能把没有 SMART 数据解释为健康。短测会在设备上启动异步自检并产生 I/O 活动，只能按准确设备手册在允许的维护时段运行；之后再读 self-test log，启动成功不等于测试通过。
+
+```bash
+# TARGET / starts a device self-test; stateful and may add I/O load.
+: "${CONFIRMED_DEVICE:?set to the device confirmed from enumeration}"
+smartctl -t short "$CONFIRMED_DEVICE"
+```
+
+### 可选的有界文件性能测试
+
+以下是可选 **TARGET shell 脚本模板**：测试只向普通文件写入最多 512 MiB，并限制 I/O 阶段为 30 秒（fio 完成 workload 或 runtime 到期即停止）；没有 `time_based`，因此不会为填满 30 秒而重复写。结束 `fsync` 可能使总用时超过 30 秒。只在确认至少 1 GiB 空闲的 scratch 挂载点运行；不要把块设备节点、系统盘或 RAID 成员作为 `filename`。测试会消耗写入量并影响正在运行的服务。先检查 `fio --version` 和目标 fio `--help`，确认所装版本支持这些选项。
+
+```bash
+(
+  SCRATCH_DIR=/mnt/bench-scratch  # set to an explicitly selected scratch mount
+  test -d "$SCRATCH_DIR" && test -w "$SCRATCH_DIR" || exit 1
+  df -h "$SCRATCH_DIR"           # confirm mount and >= 1 GiB free
+  free -h                         # inspect current resource headroom
+  FIO_FILE="$(mktemp "${SCRATCH_DIR%/}/fio-seqwrite.XXXXXX")" || exit 1
+  trap 'rm -f -- "$FIO_FILE"' EXIT HUP INT TERM
+  fio --name=seqwrite --filename="$FIO_FILE" --direct=1 --bs=1M \
+    --rw=write --size=512M --io_size=512M --runtime=30 --end_fsync=1
+  FIO_STATUS=$?
+  exit "$FIO_STATUS"              # preserve fio status; test file is removed on exit
+)
+```
+
+预期 fio 报告实际写入量、时长和结束同步；I/O 阶段最多 512 MiB 且 runtime 最长 30 秒，初始化/清理和结束同步另计。非零退出、`ENOSPC`、`EIO` 或 direct-I/O 不支持需原样记录；它们说明该配置/目标 workload 失败，不能单独定位为 PCIe、介质或文件系统根因。不要把运行主机的结果作为 TARGET 验证。
 
 ### 要点
 
@@ -63,10 +121,15 @@ fio --name=seqwrite --filename=/dev/sdX --direct=1 --bs=1M --rw=write
 ### 软 RAID（mdadm）
 
 ```bash
+# TARGET / read-only. Confirm this is the intended md device from `/proc/mdstat`.
+: "${CONFIRMED_MD_DEVICE:?set to the intended md device}"
 cat /proc/mdstat                      # 状态
-mdadm --detail /dev/md0              # 详细信息
-mdadm --stop /dev/md0
+mdadm --detail "$CONFIRMED_MD_DEVICE" # 详细信息
 ```
+
+预期输出包括成员、阵列状态和恢复/重同步进度；若状态与成员信息不一致，保留两份输出并先排查。命令失败表示工具/权限/设备不符，不应自动启动或停止阵列。
+
+`mdadm --stop` 会停止阵列，是状态变更操作，不属于状态查询。只有当当前维护范围确实要求停止某个已确认的阵列时，才根据 `mdadm` 文档执行；先确认阵列成员、挂载点、swap 和实际使用者，再使用核实过的阵列设备名。
 
 | 级别 | 最少盘数 | 特性 |
 |---|---|---|
@@ -77,119 +140,20 @@ mdadm --stop /dev/md0
 
 ### 要点
 
-- **嵌入式需预留备盘**（rebuild 空间），否则重建会失败
+- 提前规划兼容的替换盘或热备盘；替换设备可用容量需满足阵列成员要求，是否可在线重建取决于阵列级别和配置
 - **RAID 5 写惩罚**：每次小写入触发读改写，性能受损
-- **监控**：需定期 `mdadm --monitor` 或自研心跳上报
+- **监控**：阵列健康上报属于部署服务；`mdadm --monitor` 会启动持续监控（可能依配置后台运行），不是状态查询。仅在确认通知/服务配置和阵列范围后部署，并检查目标 `mdadm` 版本手册。
 - **重建期性能显著下降**，避免大量 IO 叠加
-
----
-
-## MIPI
-
-MIPI 是移动设备芯片间高速接口，嵌入式主要用于 **MIPI-CSI（摄像头）** 和 **MIPI-DSI（显示）**。
-
-```bash
-# CSI 摄像头
-media-ctl -p                        # 看 topology
-v4l2-ctl -d /dev/video0 --list-formats-ext
-
-# DSI 显示
-modetest -c                        # 查 connector
-```
-
-### 要点
-
-- **lane 数与速率决定带宽**：DSI 2-lane 跑 1080p60 需注意带宽上限
-- **初始化时序严格**：panel 的时序参数必须匹配（`drm_edid` 或 panel 节点）
-- **CSI 多虚拟通道**：可接多摄像头，注意通道分配
-
----
-
-## Docker 容器化
-
-### 嵌入式可用性
-
-```bash
-docker run -d --name app --restart always \
-  -v /data/config:/app/config \
-  --memory=512m --cpus=1.5 \
-  myapp:latest
-
-# 资源限制（嵌入式关键：防止容器吃光资源）
-docker stats
-docker logs app
-```
-
-### 要点
-
-- **必须设资源限制**（`--memory` / `--cpus`），否则容器会吃光设备资源
-- **`--restart always`**：容器化应用需自恢复
-- **存储驱动**：overlay2 有 layer，开销大；嵌入式可能用 `vfs`（慢但简单）
-- **镜像瘦身**：嵌入式镜像要小，避免拉取慢与占空间
-- **Docker 在 0 swap 设备上**，内存限制不能超物理内存太多
-
----
-
-## 多线程与异步
-
-### 嵌入式线程设计
-
-- **CPU 亲和性**：绑核避免调度抖动（`taskset` / `sched_setaffinity`）
-- **线程优先级**：实时线程 `SCHED_FIFO`（需 `CAP_SYS_NICE`）
-- **避免过度订阅**：线程数 > 核数会引入切换开销
-- **锁粒度**：粗锁串行化，细锁增加竞争，需平衡
-
-```bash
-taskset -c 2,3 ./app          # 绑到CPU 2-3
-chrt -f 80./app               # 实时优先级
-```
-
-### 异步 IO
-
-- **epoll**：多 fd 高并发标准方案
-- **回调地狱**：嵌入式推荐事件驱动模型
-- **注意**：异步 IO 与多线程混用容易出竞态，选一种为主
-
----
-
-## nginx
-
-### 嵌入式部署
-
-```nginx
-server {
-    listen80;
-    server_name _;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    client_max_body_size 50m;
-    keepalive_timeout 30;
-}
-```
-
-### 要点
-
-- **worker 数量**不要超过核数太多，嵌入式内存有限
-- **`worker_connections`** 与文件描述符上限匹配（`ulimit -n`）
-- **静态资源缓存**可减少磁盘 IO
-
-```bash
-nginx -t                # 配置检查
-nginx -s reload         # 热加载
-```
 
 ---
 
 ## 边界与注意
 
-- **Docker 必须设资源限制**，否则容器吃光内存导致宿主OOM
 - RAID 重建期性能下降明显，避免高峰期操作
-- **MIPI 时序参数必须匹配面板**，错了可能黑屏或花屏
 - PCIe 链路降速是常见坑，要确认实际协商速率
-- 多线程绑核可降低抖动，但不等于提升吞吐
-- 嵌入式用 nginx 要注意 worker 数与 fd 上限匹配
+
+## 主要参考
+
+- [pcie-raid.md](references/pcie-raid.md) — PCIe 链路、SATA/NVMe 健康与 RAID 状态需要补充细节时读取；该文含可选的有界普通文件基准。
+- fio documentation, `filename`, `size`, and bounded file I/O: https://fio.readthedocs.io/en/latest/fio_doc.html
+- `mdadm(8)` manual, including the state-changing `--stop` operation: https://man7.org/linux/man-pages/man8/mdadm.8.html

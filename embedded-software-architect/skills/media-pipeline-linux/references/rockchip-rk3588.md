@@ -1,122 +1,51 @@
-# Rockchip RK3588 平台适配
+# Rockchip RK3588 媒体适配清单（ARM64 示例）
 
-> RK3588 八核（A55×4 + A76×4），Mali-G610 GPU。硬件加速生态完整，是 Rockchip 系主力平台。
+> 仅在目标 SoC 已确认是 RK3588 时使用。本页是 SDK/BSP inventory 流程，不保证具体板卡、内核、镜像或 FFmpeg/GStreamer 构建暴露同一接口。当前没有指定 BSP release/SDK/板卡，目标构建和板测未验证。
 
-## 硬件加速能力
+## TARGET 通用接口盘点
 
-| 引擎 | 用途 | 访问方式 |
-|---|---|---|
-| **RKMPP** | 硬编解码（H.264/H.265/VP9/AV1） | MPP API 或 `mpp_service` 系统服务 |
-| **RGA2** | 2D 加速：缩放、格式转换、旋转、合成 | librga API 或 `rga` 命令行 |
-| **VPU** | 编解码协处理器（与 MPP 同源） | MPP API |
-| **Mali-G610** | GPU 图形 | EGL / OpenGL ES / Vulkan |
-
----
-
-## V4L2 采集拓扑（rkisp / rkcif）
-
-RK3588 摄像头链路典型是 **CSI2 → rkcif → rkisp → rkisp_mainpath**：
+以下命令查询目标当前可见能力；替换尖括号参数，工具缺失或权限错误要单独记录：
 
 ```bash
-media-ctl -p                # 打印完整拓扑，看 entity 与 link 关系
-v4l2-ctl -d /dev/video1 --list-formats-ext   # 查 rkisp 支持格式
-```
+# TARGET · 只读枚举 V4L2/media 拓扑。
+v4l2-ctl --list-devices
+media-ctl -p
+v4l2-ctl -d <ENUMERATED_VIDEO_NODE> --all
 
-典型节点：`/dev/media0`（media 控制器）、`/dev/video0`（rkcif 采集）、`/dev/video1`（rkisp mainpath 缩放输出）。
+# TARGET · 查询当前用户态插件与 codec 构建。
+gst-inspect-1.0 --version
+gst-inspect-1.0
+ffmpeg -version
+ffmpeg -hwaccels
+ffmpeg -encoders
+ffmpeg -filters
 
-**关键点**：rkcif 出来的原始图要经过 rkisp 处理。需要 ISP 处理（降噪/白平衡/裁剪）就用 rkisp 输出的 node。节点编号**因板卡设计而异，必须先 `media-ctl -p` 确认，不要假设**。
-
----
-
-## RKMPP 硬编解码
-
-### V4L2 M2M 路径（推荐）
-
-```bash
-v4l2-ctl --list-devices                        # 先确认编码器节点编号
-v4l2-ctl -d /dev/video30 --list-formats-ext    # 查支持格式
-
-v4l2-ctl -d /dev/video30 \
-  --set-fmt-video=width=1920,height=1080,pixelformat=NV12 \
-  --stream-mmap=4 --stream-count=100 --stream-to=/tmp/enc.h264
-```
-
-### MPP 库 / mpp_service
-
-```bash
-systemctl start mpp_service
-mpp_service_test        # 或 mpp_enc_test / mpp_dec_test
-```
-
-### FFmpeg 调用 RKMPP
-
-```bash
-ffmpeg -hwaccel rkmpp -hwaccel_output_format drm_prime \
-  -afbc rga -i input.mp4 -c:v h264_rkmpp -b:v 8M -c:a copy output.mp4
-```
-
-`-afbc rga` 启用 RGA 做格式转换；不加则走 CPU，CPU 占用显著上升。
-
-### RKMPP 约束（踩坑点）
-
-- 输入必须是**对齐的 NV12/I420**（宽高对齐要求随 codec 不同，通常 16 或 64 对齐）
-- 分辨率超出 codec 支持范围会静默失败或报错
-- 码率控制（`bps_max`/`bps_min`）直接影响质量与延迟，实时场景设小
-- **多实例并发有上限**（通常 4~8 路），超限 fail
-
----
-
-## RGA2 缩放与格式转换
-
-```bash
-rga -i input.rgb -o output.nv12 -f 1-s 1920,1080     # 1=RGBA
-rga -i input.nv12 -o output.nv12 -f 0 -r 90         # 旋转 90 度
-```
-
-### 性能关键点
-
-- **格式对齐**：源和目标 buffer 的 width/height、**stride** 必须满足对齐要求（通常按 16/64 字节），否则报错或**静默回退 CPU**
-- **stride 独立于 width**：即使 width 是 1920，实际 stride 可能更大，必须按真实 stride 传
-- **不支持任意缩放比例**：部分芯片对缩放比有区间或最小尺寸限制（如 1920→32 可能走软解）
-- **CPU fallback 陷阱**：配置不对会静默回退，排查性能问题时先确认是否走了硬件
-
-1080p 缩放开销对比：RGA 硬件 < CPU+NEON SIMD < 纯 CPU。多路场景必须用RGA。
-
----
-
-## 内存特性（OOM 排查必读）
-
-RK3588 板子**通常 0 swap**，OOM 就是真 OOM，没有 swap buffer 兜底。
-
-```bash
-grep -E "MemTotal|MemAvailable|SwapTotal|CmaFree|Slab" /proc/meminfo
-cat /proc/maps | grep -i cma
-```
-
-**CMA 是 RK3588 的常见坑位**：摄像头/GPU 需要的连续内存不足时，应用分配失败但总内存看起来还有——这是「有内存却 OOM」的典型原因。
-
----
-
-## DRM/KMS 特有注意点
-
-```bash
+# TARGET · 需要 libdrm 工具和 DRM 驱动；只读枚举 connector/CRTC/plane 能力。
 modetest -c -p
-cat /sys/kernel/debug/dri/0/state      # 需root
 ```
 
-RK3588 常见显示链路：HDMI（Type-C / HDMI2.1）、MIPI DSI、eDP。**多图层输出需用 DRM atomic**，fbdev 只能单缓冲。
+节点/element/codec 枚举仅代表目标当前镜像和驱动暴露的路径。`ffmpeg -hwaccels`、`-encoders` 或 `-filters` 输出不能单独证明对目标 codec、输入格式或 buffer path 的支持。`modetest` 不存在、权限不足或驱动拒绝查询都不是“没有显示硬件”的证明。
 
----
+## SDK/BSP inventory
 
-## 调试工具
+Rockchip MPP 维护 [MPP Development Reference 与源码](https://github.com/rockchip-linux/mpp)；它能为对应版本的 MPP 接口提供依据，但不证明某目标镜像已安装该库、service、plugin 或驱动。对项目使用的确切 BSP/SDK 再记录：
 
-设备端常见 Rockchip 工具：`mpp_service` / `mpp_enc_test` / `mpp_dec_test`、`rga`、`drm_info`、`v4l2-ctl`、`media-ctl`。
+- 板卡修订、RK3588 SoC、kernel/BSP/firmware revision、rootfs/ABI、工具链和用户态构建。
+- 对应 release 的芯片/媒体手册、SDK 目录或 package manifest；记录 source revision 和相关章节。
+- 目标设备当前提供的 V4L2 M2M 节点/format/control，或运行时列出的准确 GStreamer/FFmpeg 组件及版本。
+- 输入输出 caps/codec/profile、宽高/stride/对齐、buffer import/allocator、同步/fence、错误和 EOS drain 契约。
+- 有关 RGA/MPP 等平台接口时，记录目标 SDK 对支持格式、对齐、缩放范围、并发、fallback 和性能的正式说明，不从芯片名称推断。
 
----
+未找到精确文档或运行时证据前，不使用猜测的 `mpp_service`、测试程序、`rga` 命令、FFmpeg `rkmpp` codec/filter 名称或固定 debugfs/device 路径。若工程确实需要它们，先从匹配 SDK inventory 取得正式名称和版本用法，再在目标验证。
 
-## 边界与注意
+## 按证据排查
 
-- **MPP/RGA 是 Rockchip 专属**，联发科/全志/NXP 无等价 API，不要硬套
-- RGA 性能问题优先怀疑**对齐/stride 配置错误导致回退 CPU**
-- OOM 排查先确认是否 0 swap 板，CMA 占用是重点排查项
-- 摄像头节点号和拓扑因板卡而异，**必须先 `media-ctl -p` 确认**
+按[通用媒体工作流](pipeline-workflow.md)记录 capture sequence/PTS、queue 前后 buffer identity、转换 service time、encoder submit/completion、输出计数和 DMA ownership/fence。仅当 sequence 首次在采集处分叉时追 MIPI/ISP/V4L2；只有转换或编码阶段计数/延迟异常时核对相应格式与 SDK path；输出 packet 完整而屏显异常时转到 DRM/KMS 或 Qt。
+
+目标设备的 `MemAvailable`、swap、cgroup 事件和 OOM 日志按实际证据检查。仅当已证明路径使用 CMA 且具体 buffer allocation 失败时，再调查该内核暴露的 CMA 状态；设备型号本身不能说明 swap、OOM 或 CMA 原因。
+
+## 修改与验收
+
+修改前记录 negotiated format、plugin/SDK 版本、队列行为和同负载阶段基线。修改后用同一板卡/镜像、输入、codec 参数、分辨率、路数、时长和 CPU 负载比较序号差额、输出计数、延迟分布、画质、内存与 buffer pool；记录构建身份。没有目标设备时，写明目标构建和板测未执行。
+
+资料性质：平台适配清单；Rockchip MPP 的源码/开发参考是 vendor-specific interface 的来源，不替代目标版本与镜像 inventory。按[共享验证政策](../../embedded-debug-workflow/references/validation-policy.md)记录。

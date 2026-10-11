@@ -1,54 +1,37 @@
-# 海思 HiSilicon Hi3516 平台适配
+# 海思 Hi3516 媒体平台适配清单（ARM 示例）
 
-> 海思 Hi3516 系列常见于安防IPC、视觉类设备。编解码由 **HiVCodec**（VDEC/VENC）承担，历史上也有 OSD 区域叠加等专用能力。
+> 这是平台差异调查入口，不是 Hi3516 系列能力表。Hi3516 子型号和 SDK/BSP 发布差异需要用确切型号手册验证；当前材料未指定 SDK 文档或目标板，目标构建和板测未验证。传统 MPP、MPI、VDEC/VENC、IVE、VO 等术语不表示任一当前镜像实际提供对应接口。
 
-## 硬件加速能力
+## 通用 TARGET 证据
 
-| 引擎 | 用途 | 访问方式 |
-|---|---|---|
-| **VDEC** | H.264/H.265 硬解 | HiVCodec API / MPP |
-| **VENC** | H.264/H.265 硬编 | HiVCodec API |
-| **IVE** | 图像/视频加速（部分系列） | IVE API |
-| **VO** | 视频输出 | VO API |
+以下为标准 Linux 能力查询；工具和节点可能因镜像而缺失：
 
-**注意**：Hi3516 系列跨度很大（Hi3516C / Hi3516D / Hi3516E / Hi3516CV300 等），芯片能力和接口**差异明显**，必须以具体型号手册为准。
-
----
-
-## 关键特征
-
-- 海思 SDK 传统上使用 **MPP**（Media Processing Platform）命名，但**与 Rockchip MPP 是不同东西，API 不兼容**——不要混淆
-- OSD（On-Screen Display）叠加是海思的传统强项，用于时钟、水印、字幕等图文叠加场景
-- 部分型号有 **VDEC 通道数上限**，多路解码需确认
-
----
-
-## MPP（海思版）
-
-```c
-// 海思 MPP 使用 MPI 接口，与 Rockchip MPP API 完全不同
-MPI_SYS_Init();
-MPI_VDEC_CreateChn(&chn);      // 创建解码通道
-MPI_VDEC_SetAttr(&chn, &attr);
-MPI_VDEC_Start(&chn);
+```bash
+v4l2-ctl --list-devices
+media-ctl -p
+gst-inspect-1.0 --version
+gst-inspect-1.0
+ffmpeg -version
+ffmpeg -hwaccels
+ffmpeg -encoders
 ```
 
-**核心提醒**：海思 MPP 和 Rockchip MPP 同名不同物。**接口、类型定义、流程都不同**，跨平台迁移时不能直接替换。
+将输出与目标镜像包清单、内核配置、运行时日志和确切 SDK 文档对照。`gst-inspect-1.0` 只列出已安装 plugin/element；需核对实际 caps、设备绑定和硬件路径，不能只凭 element 名认定加速。
 
----
+## SDK inventory
 
-## 排查要点
+实现或调试厂商媒体链路前，记录：
 
-- 摄像头 sensor 与 Hi3516 的pipeline 配置强相关，常见问题是**sensor 驱动与主控适配不匹配**
-- 视频输出（VO）的显示层序配置错误会导致黑屏或层序颠倒
-- OSD 叠加区域内存不足会花屏
-- 老型号社区资料多但新资料少，需依赖海思官方文档
+- 完整 Hi3516 型号、板卡修订、boot/kernel/BSP/SDK 版本、目标 ABI。
+- 官方 SDK/芯片手册名称、版本和相关章节；缺失文档向 SDK 维护方索取。
+- 该版本明确提供的 library/header/API 和运行时插件/工具名称及其包来源。
+- codec/profile/分辨率/格式限制、buffer/pool/stride 约束、异步 completion/EOS drain 和错误语义。
+- 多消费者 buffer 的所有权、fence/cache coherence 和资源释放路径。
 
----
+在手册及 SDK 包核实函数和结构体之前，不提供 `MPI_*` 调用片段、编解码器命令或固定设备节点；名称近似 Rockchip MPP 也不能用于推断 API 兼容性。
 
-## 边界与注意
+## 修改与验收
 
-- **海思 MPP ≠ Rockchip MPP**，API 完全不同，这是最容易踩的坑
-- 同系列不同型号（Hi3516C/D/E）能力差异大，不要互相套用
-- 本文为平台骨架，具体寄存器/接口必须查该型号官方文档
-- 未在具体型号上实测的推断需标注为待验证
+按[媒体链路工作流](pipeline-workflow.md)固定负载并逐阶段记录 sequence/PTS、buffer ownership、输入/输出计数、时延和错误。只在对应 SDK 文档和目标枚举都支持时选取平台 API。用相同目标固件、输入、格式、分辨率、路数、编码参数和时间窗比较丢帧、延迟、输出质量和资源；当前资料无实机运行结果。
+
+依据和目标验证状态按[共享验证政策](../../embedded-debug-workflow/references/validation-policy.md)记录。

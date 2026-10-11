@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+# Local release artifacts and verification reports
+/dist/

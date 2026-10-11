@@ -10,9 +10,11 @@ uname -a
 cat /etc/os-release
 cat /proc/device-tree/model
 
-# 内存
+# 内存全局快照
 free -h
 grep -E "MemAvailable|SwapTotal|CmaFree|Slab" /proc/meminfo
+cat /proc/buddyinfo
+cat /proc/zoneinfo
 
 # 进程 Top 10
 ps -eo pid,rss,vsz,stat,comm --sort=-rss | head -11
@@ -28,6 +30,8 @@ systemctl --failed
 journalctl -b -p err --no-pager | tail -30
 ```
 
+RSS 增长或分配失败只是线索，不能直接作为根因结论。遇到 OOM 时，将完整内核事件与受影响进程的 cgroup 和内存计数器对照。对于 cgroup v2，从 `/proc/<pid>/cgroup` 解析对应路径，再检查该 cgroup 的 `memory.current`、`memory.max` 和 `memory.events`；对于 cgroup v1，检查目标系统挂载的 controller 文件。特定的高阶或 DMA/CMA 分配失败，应结合申请约束以及可用的 buddy/zone/CMA 证据判断。
+
 ## fd / 句柄
 
 ```bash
@@ -39,7 +43,7 @@ ls -l /proc/<pid>/fd | awk '{print $NF}' | sed 's/[0-9]*$//' | sort | uniq -c  #
 ## 网络
 
 ```bash
-ss -s# 连接总览
+ss -s # 连接总览
 ss -tan | awk '{print $1}' | sort | uniq -c | sort -rn   # 按状态统计
 ss -tan state time-wait | wc -l
 ss -tan state close-wait | wc -l
@@ -68,7 +72,7 @@ echo $QT_QPA_PLATFORM
 ## 存储健康
 
 ```bash
-cat /sys/block/mmcblk0/device/life_time  # eMMC 剩余寿命
+cat /sys/block/mmcblk0/device/life_time  # eMMC 粗粒度寿命估计；接口/字段按目标驱动和器件手册核对
 smartctl -a /dev/sda | grep -iE "health|life"
 cat /proc/mdstat                         # RAID 状态
 ```
@@ -98,3 +102,5 @@ done | tee /tmp/longrun.log
 - 这些是**取证命令**，具体分析逻辑见主 SKILL.md
 - 部分命令需 root 权限
 - 抓现场要快，异常现场会被覆盖
+- 单次 RSS、fd、CMA 或 `MemAvailable` 读数不能单独证明泄漏、OOM 范围或碎片化
+- 长跑采样按复现窗口运行；按 Ctrl-C 停止并记录采样时长

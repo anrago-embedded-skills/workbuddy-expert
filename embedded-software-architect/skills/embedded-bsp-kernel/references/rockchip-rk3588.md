@@ -1,36 +1,36 @@
 # Rockchip RK3588 BSP 适配
 
-> RK3588 BSP 生态成熟，官方维护 u-boot、Linux kernel（rockchip 分支）、Buildroot/Yocto BSP。
+RK3588 项目可能使用不同供应方、SDK 与内核/bootloader 分支。先从包内 manifest、源码 origin、板卡文档和运行版本确认，不按 SoC 名选择固定仓库或 branch。
 
 ## 启动链
 
 ```
-BootROM → TPL/SPL(TB-RK3588) → U-Boot (u-boot.itb) → Kernel (Image + rk3588.dtb)
+BootROM → [TPL/SPL] → U-Boot/FIT → [TF-A / OP-TEE, if this board uses them] → Kernel + DTB
 ```
 
-RK3588 使用 **U-Boot FIT（u-boot.itb）** 镜像，包含 U-Boot 主体 + 设备树 + 启动脚本。
+具体阶段和 FIT 内容由板卡、固件打包方式与 SDK 配置决定；串口日志和该板发行包才是实际启动顺序的依据。
 
-```bash
-# 查看启动日志（串口/console）
+```text
+# 在 U-Boot 控制台查看当前环境；具体变量名与可用命令依目标配置而定。
 printenv bootargs
 printenv bootcmd
 ```
 
 ## SDK 与仓库
 
-| 项目 | 典型仓库/位置 |
+| 项目 | SDK 中要确认的事实 |
 |---|---|
-| U-Boot | `u-boot-rockchip`（分支如 `next-dev`） |
-| Kernel | `linux-rockchip`（`rk-5.10` / `RK6.1` 等分支） |
-| Buildroot | `buildroot` + `device/rockchip` |
-| Yocto | `meta-rockchip` |
-| 根文件系统 | `buildroot` / Yocto 产出 |
+| U-Boot/kernel | 实际源码仓库、提交/分支、配置与补丁集 |
+| Buildroot/Yocto | 是否使用、板级层/recipe 与实际构建输出 |
+| 根文件系统 | 来源、启动方式、版本及其与 kernel/DTB 的配套关系 |
 
-RK3588 主流内核分支为 **5.10**（用户设备多为该版本，kernel 5.10.x）。
+不同 SDK 可能采用不同的厂商内核分支；以设备正在运行的版本和实际构建树为准。
 
 ## 设备树组织
 
-```
+部分上游树的 DTS 查找路径示例（路径和架构均须对照实际目标树确认）：
+
+```text
 arch/arm64/boot/dts/rockchip/
 ├── rk3588.dtsi              # SoC 基础定义
 ├── rk3588s.dtsi             # RK3588S 变体
@@ -38,23 +38,25 @@ arch/arm64/boot/dts/rockchip/
 └── rk3588-<board>.dts       # 板级
 ```
 
-**要点**：SoC 级定义（rk3588.dtsi）与板级（board.dts）分离，改板级配置不要动SoC 级文件。
+SoC 级定义与板级 DTS 常分开组织；确认当前板卡 include 链后，只修改能表达板级差异的正确文件。
 
-```bash
-# 运行时确认（可能含 overrides）
-cat /proc/device-tree/model
-dtc -I dtb -O dts /proc/device-tree/ 2>/dev/null
+```sh
+# 在目标 Linux shell 读取 runtime tree；输出文件写入当前目录。
+tr '\0' '\n' < /proc/device-tree/model
+dtc -I fs -O dts /proc/device-tree/ > running.dts
 ```
 
 ## 常用调试
 
-```bash
+```sh
 # 内核版本与构建信息
 uname -a
 cat /proc/version
 
-# 内存布局（RK3588 CMA 是重点排查项）
-grep -E "MemTotal|MemAvailable|CmaFree|SwapTotal" /proc/meminfo
+# 在目标板 Linux shell 上检查实际内存、CMA 和 swap 状态
+grep -E "MemTotal|MemAvailable|CmaTotal|CmaFree|SwapTotal|SwapFree" /proc/meminfo
+swapon --show
+cat /proc/swaps
 
 # 设备树生效确认
 ls /proc/device-tree/
@@ -62,9 +64,9 @@ ls /proc/device-tree/
 
 ## 特色注意点
 
-- **CMA（Contiguous Memory Arena）**：摄像头/GPU 需大块连续内存，CMA 不足会导致「有内存却分配失败」，是 RK3588 OOM 常见根因
-- **0 swap 板卡常见**：很多 RK3588 板子没开 swap，OOM 即真OOM
-- **多电源域**：RK3588 有多个 PMIC/电源域，设备树里 regulator 配置需完整
+- **连续内存分配失败**：CMA 是 Contiguous Memory Allocator。摄像头/GPU 是否要求特定连续性取决于驱动、DMA API、IOMMU 和缓冲区分配路径。结合实际分配日志、`CmaTotal`/`CmaFree`、请求大小与约束判断；单次 CMA/DMA 分配失败不等于系统 OOM，也不能单独证明根因。见 [驱动 IO 与 DMA 诊断](../../linux-device-drivers/references/io-and-dma.md)。
+- **swap 与 OOM**：按目标板运行时输出确认 swap，不根据 RK3588 型号推断。检查 `/proc/meminfo`、`swapon --show`、`/proc/swaps` 和内核 OOM 日志；若进程受 cgroup 限制，再按该进程的 `/proc/<pid>/cgroup` 检查对应 memory controller 的用量、限制和 OOM 计数器。区分全局内存压力与 memcg/其他分配约束后再判断。
+- **电源依赖**：RK3588 的电源域与板级 PMIC/regulator 配置分别核对；具体 PMIC 数量、供电连接和时序以板卡原理图与目标 binding 为准
 
 ## 边界与注意
 

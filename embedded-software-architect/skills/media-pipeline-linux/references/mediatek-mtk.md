@@ -1,56 +1,36 @@
-# 联发科 MTK 平台适配
+# MediaTek 平台适配清单（ARM 示例）
 
-> MTK 平台多媒体硬件加速由 **MDP**（Media DataPath）子系统驱动，集成度高，但生态封闭、调试依赖厂商工具链。
+> 这是平台资料核对入口，不是对任一 MediaTek SoC/BSP 能力的保证。当前材料没有指定精确 SoC、BSP release 或 SDK 文档；目标构建和板卡均未验证。不要把一个 MTK 系列、Android 实现或旧 SDK 的行为推广到其他目标。
 
-## 硬件加速能力
+## 先收集通用证据
 
-| 引擎 | 用途 | 访问方式 |
-|---|---|---|
-| **MDP** | 硬件视频管线：缩放、色彩转换、合成 | MTK MDP API / mtk_mdp 中间件 |
-| **MDP VENC / VDEC** | 硬编解码（H.264/H.265） | MDP 管线内配置 |
-| **DVIP** | 显示视频处理（部分系列） | 厂商驱动 |
-| GPU | Mali / PowerVR | EGL / GLES |
+以下是 **TARGET 只读查询**，前提是相应上游工具已在镜像安装：
 
----
-
-## 硬件管线
-
-MTK 的特色是**用 MDP 一次性完成多个像素操作**，而非像 RK 的 RGA 那样独立调用 2D 引擎。
-
-典型流程：
-```
-V4L2 采集 → MDP 管线（缩放+转换+编码）→ 输出
+```bash
+v4l2-ctl --list-devices
+media-ctl -p
+gst-inspect-1.0 --version
+ffmpeg -version
+ffmpeg -hwaccels
+ffmpeg -encoders
 ```
 
-关键点：MDP 管线在配置时就要确定各环节的输入输出格式，**运行时不能随意改**，改动需重建管线。
+记录当前镜像实际可见的设备、media topology、用户态编解码能力和版本；查询输出不表示专用 MDP/codec 接口存在。工具缺失时把包/工具可用性作为待查项。
 
----
+## SDK inventory
 
-## MTK 与 RK 的核心差异
+在提及 MDP、VENC/VDEC、DVIP、vendor API 或格式路径前，核对以下目标材料：
 
-| 维度 | RK3588 | MTK |
-|---|---|---|
-| 2D 缩放引擎 | RGA2（独立、可单独调用） | MDP（管线内环节） |
-| 编程模型 | 逐个引擎调用 | 组装完整管线 |
-| 格式转换 | RGA 逐次转 | MDP 管线内指定 |
-| 可观测性 | 较好（rga 工具可单测） | 较弱（依赖厂商工具） |
+- 完整芯片型号、板卡修订、BSP/内核及 firmware revision、用户态 ABI。
+- 精确版本的 MediaTek/方案商 SDK、官方数据手册与媒体开发文档。
+- SDK 明确暴露的 V4L2 ioctl/capabilities、GStreamer elements 或其他接口/API；记录精确名称及版本。
+- 输入输出格式、plane/stride/对齐、拓扑/时钟要求、async completion 和 buffer 生命周期。
+- 每一阶段的错误码、可观测日志、最大并发与性能限制；只采用该目标文档有依据的值。
 
-**实践建议**：在 MTK 上排查像素格式问题，比 RK 平台更依赖厂商 debug 工具和 MTK 官方文档，社区可参考资源较少。
+没有对应版本文档时先停在标准接口、源码和运行时证据层，向 SDK/BSP 维护方索取具体章节；不将猜测的工具名、MDP 编程模型或厂商命令作为可运行步骤。
 
----
+## 修改与验收
 
-## 排查要点
+按 [媒体链路工作流](pipeline-workflow.md) 在 capture、队列、像素处理、编码和输出边界记录协商格式、buffer ownership、sequence、计数、延迟与错误。确认某平台接口实际存在后再以最小改动验证；在相同目标、输入、路数、时长及系统负载下比较吞吐、端到端延迟、丢帧、画质、CPU/内存和资源。无匹配 SDK/板卡时注明未执行目标构建/板测。
 
-- 摄像头与显示节点拓扑需用 `media-ctl -p` 确认，MTK pipeline 设计较复杂
-- MDP 管线配置错误通常表现为黑屏/花屏而非报错，**必须逐环节验证格式**
-- 硬解性能不足先确认是否真的走硬件（MTK 侧可从芯片 datasheet 确认 MDP 通路限制）
-- MTK 平台 SDK 版本差异大，**不要凭其他 MTK 芯片的经验直接套用**
-
----
-
-## 边界与注意
-
-- 本文档为**平台骨架**，具体 MDP API 需查该芯片 MTK 官方文档
-- **不要把 RK 的 RGA/MPP 思路套到 MTK**——编程模型根本不同
-- MTK 生态封闭，很多细节需向芯片原厂/方案商获取文档，公开信息有限
-- 未验证的推断需明确标注，不要伪装成确定结论
+依据和验证状态按[共享验证政策](../../embedded-debug-workflow/references/validation-policy.md)记录。

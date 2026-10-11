@@ -1,82 +1,34 @@
-# NXP i.MX 平台适配
+# NXP i.MX 媒体平台适配清单（ARM 示例）
 
-> NXP i.MX 系列用 **VPU**（Video Processing Unit）做硬件编解码，GStreamer 集成完善，是 Linux 社区支持最好的嵌入式媒体平台之一。
+> i.MX 媒体能力随精确 SoC、BSP release、内核驱动和镜像包变化。本页给出能力核对流程，不将旧项目 element、codec 或私有工具名当作通用接口。当前没有配套目标 SDK/板卡，目标构建和板测未验证。
 
-## 硬件加速能力
+## TARGET 运行时能力查询
 
-| 引擎 | 用途 | 访问方式 |
-|---|---|---|
-| **VPU** | 硬件编解码（H.264/H.265/VP8/VP9） | VPU API / GStreamer plugin |
-| **GPU** | Mali / PowerVR GC | EGL / GLES / OpenCL |
-| **ISP** | 图像信号处理（i.MX8系列） | ISP 驱动 |
-
----
-
-## GStreamer plugin（推荐路径）
-
-i.MX 生态的最大优势是**官方提供成熟的 GStreamer 硬件插件**，无需直接调 VPU API：
+以下命令只读取目标镜像暴露的信息；必须先确认节点，不从 `/dev/videoN` 编号推断 VPU 或摄像头功能：
 
 ```bash
-# 查看可用的硬件插件
-gst-inspect-1.0 | grep -i "omx\|vpu\|mfx\|ivf"
-
-# 典型硬解管线
-gst-launch-1.0 filesrc location=input.mp4 ! qtdemux \
-  ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
+v4l2-ctl --list-devices
+media-ctl -p
+gst-inspect-1.0 --version
+gst-inspect-1.0
+ffmpeg -version
+ffmpeg -hwaccels
+ffmpeg -encoders
 ```
 
-常见 plugin 家族（随芯片代数不同）：
-- `v4l2slp`（slp）
-- `imxv4l2`（i.MX V4L2）
-- `omx*`（OpenMAX，Gen1/Gen2/Gen3/Gen4 分代）
-- `nvv4l2decoder` / `nvv4l2encoder`（Gen6+ 统一命名）
+对 `gst-inspect-1.0` 输出中确实存在的 element，再读取该 element 的属性、pad template 和 caps。元素枚举仅说明当前 GStreamer 安装中的插件；需要通过匹配 SDK 文档和负载实测证明它走目标硬件路径。命令不存在时检查镜像包清单和 Yocto image/package manifest。
 
-**关键**：不同 i.MX 代数 plugin 名不同，**必须先 `gst-inspect-1.0` 确认实际可用插件名**，不要凭型号记忆写管线。
+## 精确 SDK 核对
 
----
+1. 确认完整 i.MX 型号、板卡、BSP release、kernel/firmware revision 和目标 ABI。
+2. 查该 release 的 [i.MX Linux User's Guide](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/imx-processors/244451/1/UG10163_i.MX_Linux_User%27s_Guide.pdf)、[i.MX Yocto Project User's Guide](https://docs.nxp.com/bundle/UG10164/page/topics/overview.html) 及对应 Release Notes/插件表。指南中的 host/target、镜像包和 element 条件需按其注明版本解释，不跨 SoC 复用示例。
+3. 记录该版本实际提供的 V4L2/element/API 名、codec/profile、格式/caps、allocator/DMA buffer 路径和明确支持的分辨率/并发。
+4. 核对异步提交/完成、错误和 drain 语义、buffer ownership/fence/cache visibility；不能把“支持 zero copy”泛化为无需同步。
 
-## VPU 直接编程
+缺少精确 release 手册或运行时枚举时，向 BSP/SDK 维护方补齐版本文件，不使用猜测的 `vpu_decoder`、`vpu_info` 等命令，也不根据旧 `imx*`/`omx*` element 名拼管线。
 
-```bash
-# 查询 VPU 能力
-vpu_decoder --query
-vpu_info
-```
+## 修改与验收
 
-VPU API 直接调用需要处理缓冲区对齐、缓存同步（`dcache flush/invalidate`），跨驱动边界传 DMA buffer 时尤其要注意一致性。
+先按 [媒体链路工作流](pipeline-workflow.md) 对齐 capture、转换、encoder 的协商和逐阶段时间戳/计数。只有经过目标枚举和 SDK 手册确认的 element 才进入修改方案。相同目标镜像、输入/分辨率/路数/参数/时长和负载下检查帧差额、延迟、CPU/内存、buffer pool、画质和 EOS drain；没有目标环境时把构建及板测标为未执行。
 
----
-
-## 优势与坑点
-
-**优势**：
-- GStreamer 插件成熟，社区文档和示例丰富
-- 主线内核支持好，不需要 out-of-tree 驱动
-- VPU 硬解性能在同代芯片中领先
-
-**坑点**：
-- **plugin 名随代数变化**，抄旧项目的管线在新芯片上会失败
-- DMA 缓冲区跨进程/跨驱动传递时缓存同步问题导致画面撕裂或花屏
-- 编码器支持的分辨率/profile 有约束，超出会失败
-
----
-
-## 与其他平台对比
-
-| 维度 | RK3588 | NXP i.MX |
-|---|---|---|
-| 硬解访问 | MPP API（需自己封） | GStreamer plugin 或 VPU API |
-| 生态集成 | 需自行集成到管线 | **官方插件，开箱可用** |
-| 文档 | 社区资料多 | 官方文档完善 |
-| 编程模型 | 同步 API 清晰 | 插件化，异步管线 |
-
-NXP 上如果只是做常规编解码，**优先用 GStreamer 官方 plugin，不必直接调 VPU**——除非有特殊 buffer 管理需求。
-
----
-
-## 边界与注意
-
-- **不要把 MPP/RGA 思路套到 i.MX**，API 与插件体系完全不同
-- plugin 名必须实际查询确认，不能凭i.MX 代数推断
-- 遇到花屏/撕裂先怀疑 DMA 缓存同步，而非编码器参数
-- 具体芯片（i.MX6 / i.MX8 / i.MX9）能力差异大，查该芯片 datasheet
+资料依据：NXP [i.MX Linux User's Guide](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/imx-processors/244451/1/UG10163_i.MX_Linux_User%27s_Guide.pdf) 和 [i.MX Yocto Project User's Guide](https://docs.nxp.com/bundle/UG10164/page/topics/overview.html)。具体 multimedia plugin 表位于配套 release 文档，需精确到项目使用的版本。

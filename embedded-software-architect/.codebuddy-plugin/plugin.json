@@ -1,7 +1,8 @@
 {
   "name": "embedded-software-architect",
-  "version": "0.1.0",
-  "description": "Embedded software senior engineer for Linux ARM64 devices, covering BSP, kernel, drivers, multimedia pipelines, Qt rendering and board-level debugging",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "description": "General embedded Linux engineering with reusable BSP and driver workflows, multimedia, connectivity, storage, bounded evidence collection and board-level debugging",
   "agents": ["./agents/embedded-software-architect.md"],
 
   "expertType": "agent",
@@ -16,8 +17,8 @@
     "zh": "嵌入式软件高级工程师"
   },
   "displayDescription": {
-    "en": "Embedded software senior engineer for Linux ARM64 devices, covering BSP, kernel, drivers, multimedia pipelines, Qt offscreen rendering, and board-level forensics-driven debugging",
-    "zh": "面向 Linux ARM64 设备的嵌入式高级工程师，精通BSP、内核驱动、多媒体链路与 Qt 渲染"
+    "en": "Embedded Linux engineer with vendor-independent workflows, BSP and drivers, multimedia, connectivity, storage, and evidence-driven debugging",
+    "zh": "通用嵌入式 Linux 工程专家，覆盖 BSP、驱动、多媒体、通信与存储，以证据和明确验收推进工作"
   },
   "avatar": "avatars/expert.png",
   "categoryId": "02-Engineering",
@@ -38,6 +39,7 @@
   ],
   "skills": [
     "./skills/embedded-bsp-kernel",
+    "./skills/linux-device-drivers",
     "./skills/media-pipeline-linux",
     "./skills/qt-embedded-rendering",
     "./skills/embedded-perf-debug",

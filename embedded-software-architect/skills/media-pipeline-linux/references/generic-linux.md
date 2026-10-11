@@ -1,81 +1,55 @@
-# 通用 Linux 平台（无 SoC 特定硬件加速）
+# 通用 Linux 多媒体能力调查
 
-> 当目标平台没有已知专用硬件加速引擎，或不确定硬件能力时，走通用路径。**软解也能工作，只是性能上限较低。**
+> 目标 SoC/BSP 未知、平台 SDK 未就绪或专用路径暂不可证实时，从本页继续。通用接口和用户态工具能展示当前镜像/驱动暴露的能力，但不能证明某个硬件加速器存在或不存在。
 
-## 何时用这份文档
+## 目标设备能力枚举
 
-- 目标板卡没有明确 SoC 型号，或型号未知
-- 使用通用 ARM64 SoC，没有成熟硬件加速生态
-- 作为硬件引擎不可用时的**兜底方案**
-- 平台切换中，需要先跑通功能再优化
-
----
-
-## 通用多媒体能力
-
-### 视频编解码（软解/软编）
+以下是 **TARGET 只读查询**；工具缺失、权限拒绝、命令选项不同和“设备不支持”要分开记录：
 
 ```bash
-# FFmpeg 软解+ 软编
-ffmpeg -i input.mp4 -c:v libx264 -preset ultrafast -tune zerolatency output.mp4
-
-# 检查 FFmpeg 支持的编码器
-ffmpeg -encoders | grep -E "libx264|libx265|libvpx"
+v4l2-ctl --list-devices
+media-ctl -p
+gst-inspect-1.0 --version
+gst-inspect-1.0
+ffmpeg -version
+ffmpeg -hwaccels
+ffmpeg -encoders
+ffmpeg -filters
 ```
 
-**性能预期**：软编1080p 通常 CPU 占用很高，实时性和多路并发能力有限。适合功能验证，不适合生产多路场景。
+从结果核对当前 V4L2/media topology、实际 GStreamer element/caps、FFmpeg 构建和版本。设备节点必须来自枚举；某个工具没安装不表示硬件功能不可用。复杂问题沿用[媒体链路工作流](pipeline-workflow.md)记录 caps、stride/plane、sequence/PTS、队列、计数、时延和 buffer ownership。
 
-### 2D 缩放与格式转换
+## 软件处理验证模板
 
-无硬件引擎时用 CPU SIMD（NEON）：
+在 HOST 文件样本或 TARGET 文件样本上做软件处理时，先确认 `ffmpeg -encoders` 中存在所选软件 encoder。以下为**参数模板**，不可原样执行；替换已存在的输入和新输出路径及已枚举的 encoder。它会读输入、编码并创建输出文件，失败时保留 stderr/返回码；不要把 HOST 成功当目标性能数据。
 
 ```bash
-ffmpeg -i input.mp4 -vf "scale=1280:720" -c:v libx264 output.mp4
+# HOST/TARGET · 参数模板；仅在软件 encoder 已由 `ffmpeg -encoders` 确认后使用。
+ffmpeg -i <INPUT_FILE> -c:v <CONFIRMED_SOFTWARE_ENCODER> <NEW_OUTPUT_FILE>
 ```
 
-**优化方向**：
-- 用 NEON 加速的库（如 `libyuv`）
-- 避免重复格式转换（链路上转几次就吃几次性能）
-- 降低分辨率/帧率是简单有效的手段
+软件路径适合验证功能和建立一个基线；吞吐、CPU、功耗与多路能力必须在目标上按同负载测量，不能用“软解肯定慢”或 SoC 家族名代替数据。若能力、准确率和预算有正式要求，先确认目标构建和设备是否暴露兼容的硬件路径，再决定是否调整分辨率、帧率、色彩转换或平台。
 
----
-
-## DRM / KMS（通用）
-
-Linux DRM/KMS 是内核标准框架，任何 DRM 驱动都适用：
+## DRM/KMS 和 fbdev
 
 ```bash
-modetest -c -p       # 显示状态
+# TARGET · 只读枚举，需要目标安装 libdrm 的 modetest 与 DRM driver。
+modetest -c -p
+
+# TARGET · 只读 debugfs 状态；需内核启用/挂载 debugfs 和适当权限，缺失不证明没有 DRM。
 cat /sys/kernel/debug/dri/0/state
 ```
 
-驱动差异在于**能力**，不在于接口。V4L2、ALSA、GStreamer 同理——接口通用，能力看驱动。
+输出状态可显示 connector/CRTC/plane 等驱动信息；能力、权限、page flip、atomic update 和同步都依目标驱动验证。V4L2/ALSA/GStreamer 也是通用接口与具体驱动能力相分离。多媒体显示具体分支见[主技能 DRM/KMS](../SKILL.md)。
 
----
+## 架构与构建
 
-## V4L2 / ALSA（通用）
+SIMD 和 toolchain 选项以目标架构/ABI 为准。**ARM32 例子**：当目标 CPU 确实支持 NEON 且所用 GCC toolchain 适用时才考虑 `-mfpu=neon`。**ARM64 例子**：不使用该 ARM32 选项；按目标 compiler/triple 的 `-mcpu`/`-march` 和部署 ABI 确认。主机 CPU 型号不能替代交叉工具链或实际 image 架构。
 
-V4L2 和 ALSA 是 Linux 标准接口，**行为与平台无关**，直接参考 `SKILL.md` 主干部分。
+## 适用边界
 
----
+- 平台未知时可用通用查询建立目标 capability inventory，不等待 SoC 门槛信息才开始排查。
+- 确认平台专有 API/工具影响实现时，再加载匹配 SoC/BSP/SDK 文档并核实精确包、版本、format、alignment 和 buffer/sync 规则。
+- 仅目标系统 build/板测能验证目标驱动与硬件；HOST 文件实验、工具输出和源码分析分别报告。
 
-## 性能与优化策略
-
-没有硬件加速时的现实策略：
-
-1. **降低负载**：减分辨率、减帧率、减并发路数
-2. **减少转换**：管线里格式转换次数最小化
-3. **用 SIMD**：确保编译时启用了 NEON（`-mfpu=neon`）
-4. **多核利用**：确认并行度，避免单核瓶颈
-5. **评估换平台**：若性能需求硬性达不到，应考虑换带硬件加速的 SoC，而不是硬扛
-
-**关键**：要如实告诉用户软解的性能上限，不要让用户以为"能跑就行"。给出实测数据，让用户判断是否可接受。
-
----
-
-## 边界与注意
-
-- 软解性能有明确上限，**不要在性能敏感场景默认推荐软解**
-- 遇到性能需求，先确认目标 SoC 是否有可用硬件引擎，别贸然建议软解
-- 通用路径能跑通功能，但生产级多路场景应明确告知风险
-- 若确认目标 SoC 有硬件引擎，**务必切回对应平台文档**，不要停在通用方案
+来源与未执行验证按[共享验证政策](../../embedded-debug-workflow/references/validation-policy.md)记录。
