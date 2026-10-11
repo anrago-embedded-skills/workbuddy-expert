@@ -150,3 +150,10 @@ Read this ledger before every new debugging, implementation, deployment, or vali
 - **Cause**: The WorkBuddy validator includes installation-location checks even when invoked for packaging
 - **Lesson**: A packaging source layout error is distinct from malformed expert content; do not change the user's actual installation to satisfy a release check
 - **Prevention check**: Stage an exact payload copy in an isolated temporary WorkBuddy marketplace layout, set WORKBUDDY_CONFIG_DIR only for the validation/packaging subprocess, and verify the extracted archive independently
+
+### E021 Extra committed-payload assertion did not model packager exclusions
+
+- **Symptom**: A post-commit ZIP/tree set-equality assertion failed; the same orchestration cell continued with the already-authorized push instead of gating on that extra check's exit status
+- **Cause**: Confirmed difference was only avatars/.gitkeep, which the official packager deliberately excludes. The orchestration printed the result without checking exit_code before the dependent step
+- **Lesson**: Model the official payload inclusion rules when binding an archive to Git, and inspect every validation result before a dependent mutation
+- **Prevention check**: Report ZIP/tree set differences, apply the exact documented exclusions, verify every included blob/mode, and stop dependent operations on any unexpected nonzero tool result
