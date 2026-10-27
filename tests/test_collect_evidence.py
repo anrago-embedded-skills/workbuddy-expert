@@ -111,6 +111,21 @@ class CollectEvidenceTests(unittest.TestCase):
             path.write_bytes(data)
         return path
 
+    def make_octal_looking_backslash_output(self) -> tuple[Path, Path, Path]:
+        output = self.base / r"out\057escape"
+        decoded_directory = self.base / "out" / "escape"
+        decoded_directory.mkdir(parents=True)
+        sentinel = decoded_directory / "keep.txt"
+        sentinel.write_text("preserve outside directory\n", encoding="utf-8")
+        return output, decoded_directory, sentinel
+
+    def assert_no_output_escaped_to(self, decoded_directory: Path, sentinel: Path) -> None:
+        self.assertEqual(
+            {path.name for path in decoded_directory.iterdir()},
+            {sentinel.name},
+            "collector created a flag or other output outside the selected directory",
+        )
+
     def collect(self, mode: str, name: str, *extra: str) -> tuple[subprocess.CompletedProcess[str], Path]:
         output = self.base / name
         result = self.invoke(
@@ -244,6 +259,51 @@ class CollectEvidenceTests(unittest.TestCase):
         item = next(item for item in self.manifest(output)["items"] if item["name"] == "kernel-kern-log")
         self.assertEqual(item["status"], "truncated")
 
+    def test_offline_env_preserves_literal_backslash_output_path_and_truncation_flags(self) -> None:
+        output, decoded_directory, sentinel = self.make_octal_looking_backslash_output()
+        self.write_source("proc/version", "v" * 501 + "\n")
+        self.write_source("proc/device-tree/model", b"m" * 501 + b"\x00")
+
+        result = self.invoke(
+            "--mode", "env", "--output", str(output), "--source-root", str(self.source)
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        items = {item["name"]: item for item in self.manifest(output)["items"]}
+        with self.subTest(item="proc-version truncation status"):
+            self.assertEqual(items["proc-version"]["status"], "truncated")
+        with self.subTest(item="device-tree-model truncation status"):
+            self.assertEqual(items["device-tree-model"]["status"], "truncated")
+        self.assertEqual(
+            {path.name for path in output.iterdir()},
+            {"proc-version.txt", "device-tree-model.txt", "manifest.json", "summary.txt"},
+        )
+        self.assertTrue((output / "proc-version.txt").is_file())
+        self.assertTrue((output / "device-tree-model.txt").is_file())
+        with self.subTest(item="output path confinement"):
+            self.assert_no_output_escaped_to(decoded_directory, sentinel)
+
+    def test_offline_kernel_tail_preserves_literal_backslash_output_path_and_truncation_flag(self) -> None:
+        output, decoded_directory, sentinel = self.make_octal_looking_backslash_output()
+        self.write_source("var/log/kern.log", "k" * 501 + "\n")
+
+        result = self.invoke(
+            "--mode", "kernel", "--output", str(output), "--source-root", str(self.source)
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        item = next(
+            item for item in self.manifest(output)["items"] if item["name"] == "kernel-kern-log"
+        )
+        with self.subTest(item="kernel log truncation status"):
+            self.assertEqual(item["status"], "truncated")
+        self.assertEqual(
+            {path.name for path in output.iterdir()},
+            {"kernel-var-log-kern.log.txt", "manifest.json", "summary.txt"},
+        )
+        with self.subTest(item="output path confinement"):
+            self.assert_no_output_escaped_to(decoded_directory, sentinel)
+
     def test_live_kernel_mode_keeps_the_newest_bounded_dmesg_lines(self) -> None:
         dmesg_body = (
             "i=0\n"
@@ -264,6 +324,25 @@ class CollectEvidenceTests(unittest.TestCase):
         self.assertEqual(lines[-1], "w" * MAX_LINE_CHARS)
         item = self.manifest(output)["items"][0]
         self.assertEqual(item["status"], "truncated")
+
+    def test_mocked_live_dmesg_preserves_literal_backslash_output_path_and_truncation_flag(self) -> None:
+        output, decoded_directory, sentinel = self.make_octal_looking_backslash_output()
+        env = self.install_live_shims(
+            "printf '%s\\n' '" + "d" * 501 + "'"
+        )
+
+        result = self.invoke("--mode", "kernel", "--output", str(output), env=env)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with self.subTest(item="dmesg truncation status"):
+            self.assertEqual(self.manifest(output)["items"][0]["status"], "truncated")
+        self.assertEqual(
+            {path.name for path in output.iterdir()},
+            {"kernel-dmesg.txt", "manifest.json", "summary.txt"},
+        )
+        self.assertLessEqual(len((output / "kernel-dmesg.txt").read_bytes()), MAX_LINE_CHARS + 1)
+        with self.subTest(item="output path confinement"):
+            self.assert_no_output_escaped_to(decoded_directory, sentinel)
 
     def test_live_kernel_mode_distinguishes_dmesg_failure_from_empty_success(self) -> None:
         cases = (

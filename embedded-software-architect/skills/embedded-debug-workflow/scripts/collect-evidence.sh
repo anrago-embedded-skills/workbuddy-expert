@@ -284,8 +284,9 @@ format_capture() {
     : > "$format_flag" || { output_error=1; capture_status=error; return 1; }
 
     if [ "$format_transform" = dt ]; then
-        tr '\000' '\n' < "$format_input" 2>/dev/null | awk \
-            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" -v flag="$format_flag" '
+        tr '\000' '\n' < "$format_input" 2>/dev/null | CAPTURE_FLAG_PATH=$format_flag awk \
+            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" '
+                BEGIN { flag = ENVIRON["CAPTURE_FLAG_PATH"] }
                 {
                     if (NR > max_lines) { clipped = 1; next }
                     line = $0
@@ -297,8 +298,9 @@ format_capture() {
                 END { if (clipped) print "truncated" > flag }
             ' > "$format_output"
     elif [ "$format_direction" = tail ]; then
-        awk \
-            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" -v flag="$format_flag" '
+        CAPTURE_FLAG_PATH=$format_flag awk \
+            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" '
+                BEGIN { flag = ENVIRON["CAPTURE_FLAG_PATH"] }
                 {
                     line = $0
                     if (length(line) > width) { clipped = 1; line = substr(line, 1, width) }
@@ -319,8 +321,9 @@ format_capture() {
                 }
             ' "$format_input" > "$format_output"
     else
-        awk \
-            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" -v flag="$format_flag" '
+        CAPTURE_FLAG_PATH=$format_flag awk \
+            -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" '
+                BEGIN { flag = ENVIRON["CAPTURE_FLAG_PATH"] }
                 {
                     if (NR > max_lines) { clipped = 1; next }
                     line = $0
@@ -485,8 +488,9 @@ collect_dmesg() {
         dmesg 2>&1
         producer_status=$?
         printf '%s\n' "$producer_status" > "$producer_status_file"
-    ) | awk \
-        -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" -v flag="$stream_flag_file" '
+    ) | CAPTURE_FLAG_PATH=$stream_flag_file awk \
+        -v max_lines="$MAX_LINES" -v width="$MAX_LINE_CHARS" '
+            BEGIN { flag = ENVIRON["CAPTURE_FLAG_PATH"] }
             {
                 line = $0
                 if (length(line) > width) { clipped = 1; line = substr(line, 1, width) }

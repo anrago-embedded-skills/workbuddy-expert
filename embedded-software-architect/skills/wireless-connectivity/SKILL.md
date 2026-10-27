@@ -139,12 +139,13 @@ Expected output identifies controller/device and reported peer properties; a mis
 
 ## Matter
 
-Matter 是智能家居连接标准（基于 WiFi/Thread/BLE）。
+Matter 是运行在 IP 网络上的智能家居连接标准。运行期消息通过 IPv6 传输，常见网络承载包括 Wi-Fi、Thread 和 Ethernet；BLE 可作为未入网设备的 commissioning 通道，用于建立安全会话并传递运行网络凭据。设备加入 Wi-Fi 或 Thread 等运行网络后，Matter operational traffic 走 IPv6；已经在 IP 网络上的设备也可通过 IP commissioning。不要把 BLE commissioning 与 Matter 运行期网络混为一谈。
 
 ### 要点
 
-- **Matter 需 IPv6**，且本地网络需支持
-- **配网流程**（Commissioning）是使用门槛，需按标准流程走
+- **运行期需要 IPv6 可达性**；分别确认目标网络接口、地址、路由、DNS-SD 和 peer 状态
+- **Commissioning 与运行期通信是不同阶段**：BLE 只在支持 BLE 配网的场景中作 commissioning channel；设备入网后的 operational messages 走目标 IP 网络
+- Matter over Thread 需要目标 Thread network 的 Operational Dataset；从 Wi-Fi/Ethernet 上的外部 controller 访问 Thread 设备时，需要 Thread Border Router 承接跨网 IPv6 与服务发现
 - **生态兼容**：需加入 Matter 生态（CSA 认证）
 
 **适用判断**：Matter 主要面向智能家居/IoT 消费类，**工业或专用设备通常不需要**。如果你的产品要进 Matter 生态或对接 Matter 设备，才需要关注。
@@ -160,7 +161,7 @@ Thread 是基于 IPv6 的低功耗 mesh 网络协议。
 | 基础 | **IPv6-based** |
 | 拓扑 | Mesh（多跳） |
 | 低功耗 | 适合电池设备 |
-| 依赖 | **需 IPv6 网络 + Border Router** |
+| 依赖 | Thread mesh 自身承载 IPv6；Border Router 用于连接 Wi-Fi/Ethernet 等其他 IP 网络，不是 Thread mesh 内节点互通的前提 |
 
 **注意**：Thread 与 WiFi 共存（2.4GHz）可能互相干扰，部署时考虑信道规划。
 
@@ -218,3 +219,5 @@ ping -c 3 "$KNOWN_PEER_IP"       # known permitted peer, not a fixed public addr
 ## 主要参考
 
 - Linux Wireless `iw` documentation, including the `set txpower` syntax: https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw.html
+- Matter commissioning and IP operation: [CHIP Tool Matter commissioning guide](https://project-chip.github.io/connectedhomeip-doc/development_controllers/chip-tool/chip_tool_guide.html), [nRF Connect commissioning overview](https://project-chip.github.io/connectedhomeip-doc/platforms/nrf/nrfconnect_android_commissioning.html)
+- Thread mesh and external IP connectivity: [OpenThread Border Router](https://openthread.io/guides/border-router), [OpenThread node roles](https://openthread.io/guides/thread-primer/node-roles-and-types)

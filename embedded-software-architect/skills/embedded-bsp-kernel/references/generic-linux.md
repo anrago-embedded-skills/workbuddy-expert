@@ -15,7 +15,7 @@
 uname -a
 cat /proc/version
 cat /proc/cmdline
-cat /proc/device-tree/model
+tr '\0' '\n' < /proc/device-tree/model
 ```
 
 ## 检查设备树和绑定

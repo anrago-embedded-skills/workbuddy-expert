@@ -77,8 +77,10 @@ glxinfo -B
 |---|---|
 | `opacity: 0` 子树可能被裁剪，但绑定/动画/资源仍工作 | 需要时用 `visible: false` 并单独暂停工作 |
 | layer/effect 过多 | 合并，GPU 带宽打满 |
-| JS 在主线程 | 移到 `Worker` |
+| CPU-heavy 的独立 QML JavaScript 计算在主线程 | 需要时移入 QML `WorkerScript`，通过 `sendMessage()` / `onMessage()` 交换数据；它不能直接访问 QML item 或 `QQmlContext` |
 | 离屏测试性能好 | **不代表上屏性能**（可能走软件渲染） |
+
+`WorkerScript` 使用独立的 JavaScript context；只适用于可与 UI 分离的数据计算。worker 返回消息后，再由 QML 线程更新界面。详见 [Qt WorkerScript 文档](https://doc.qt.io/qt-6/qml-qtqml-workerscript-workerscript.html)。
 
 ## 边界
 
@@ -91,3 +93,4 @@ glxinfo -B
 - Qt 6.8 Embedded Linux platform plugins: https://doc.qt.io/qt-6.8/embedded-linux.html
 - Qt Quick scene graph adaptations: https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations.html
 - QQuickRenderControl frame lifecycle: https://doc.qt.io/qt-6.12/qquickrendercontrol.html
+- Qt `WorkerScript` threading and message restrictions: https://doc.qt.io/qt-6/qml-qtqml-workerscript-workerscript.html

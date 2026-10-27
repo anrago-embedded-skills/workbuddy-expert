@@ -46,7 +46,7 @@ description: |
 6. 使用内核资源和子系统 API 访问硬件。实现或排查 MMIO、regmap、DMA/IOMMU、缓存所有权或 DMA-BUF 时，读取 [IO 与 DMA](references/io-and-dma.md)。
 7. 实现时钟、复位、电源、pinctrl、runtime PM 或 system sleep 时，按设备依赖和子系统顺序处理；读取 [电源、子系统与验证](references/power-subsystems-validation.md)。
 
-探测依赖尚未就绪时，尽早传播 provider 返回的 `-EPROBE_DEFER`；不要先注册子设备或对用户开放接口再 defer。探测错误优先用 `dev_err_probe()` 记录上下文并保留 deferred reason。实现或审查 probe/remove 回滚、IRQ/work/timer/thread 停止顺序和调用上下文时，读取 [生命周期与并发](references/lifecycle-and-context.md)。
+探测依赖尚未就绪时，尽早传播 provider 返回的 `-EPROBE_DEFER`；不要先注册子设备或对用户开放接口再 defer。先检查目标树 `include/linux/device.h` 是否声明 `dev_err_probe()`：存在时可用它记录 probe 上下文并保留 deferred reason；旧 BSP 若没有此 API，则使用目标树支持的日志函数并原样返回 errno，不能吞掉或改写 `-EPROBE_DEFER`。不要只按版本号推断 API 存在与否，因为厂商树可能回移植接口。实现或审查 probe/remove 回滚、IRQ/work/timer/thread 停止顺序和调用上下文时，读取 [生命周期与并发](references/lifecycle-and-context.md)。
 
 需要区分预期 defer 与永久资源错误时，读[probe defer 案例](references/cases/probe-defer.md)；卸载等待异步工作时读[异步 teardown 死锁案例](references/cases/async-teardown-deadlock.md)；streaming buffer 数据不一致时读[DMA 所有权案例](references/cases/streaming-dma-ownership.md)。这些都是合成教学材料，不表示曾在某个目标板验证。
 

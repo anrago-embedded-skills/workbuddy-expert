@@ -21,5 +21,17 @@
 | 应用线程/epoll、Docker/nginx 与内核锁：请求处理卡住，可能位于用户态线程、容器限额或内核等待。 | `embedded-debug-workflow` | 必读 primary `SKILL.md`。场景明确涉及 pthread、epoll、Docker 或 nginx，必须读取迁移后的 `embedded-debug-workflow/references/app-runtime.md`。需要精简通用排障清单时再读 `references/debug-playbook.md`。有 OOM/压力证据时辅助 `embedded-perf-debug`；需要命令/字段时读取 forensics-cheatsheet。有内核栈、lockdep、IRQ/workqueue 证据时辅助 `linux-device-drivers` 并必须读取 `linux-device-drivers/references/lifecycle-and-context.md`。 | 先区分应用线程等待、epoll/fd、容器限额和内核锁；没有内核栈/锁证据时不把线程卡住称作内核死锁。记录 primary/辅助 `SKILL.md` 和 app-runtime/lifecycle 的实际读取；可选参考按需记录，未补读时注明正文足够或条件未满足。 | 未运行。 |
 | 嵌入式视觉扩展：明确询问 OpenCV 图像处理、模型转换或目标设备上的 NPU 推理能力。 | `display-compositor-gpu`（视觉扩展场景） | 必读 primary `SKILL.md` 及迁移后的 `display-compositor-gpu/references/vision-inference.md`。平台页只在需要目标 SoC 命令/能力约束时补读。若问题也包含摄像头采集/媒体管线，再辅助 `media-pipeline-linux` 并读取其 `SKILL.md`；对应 SoC 参考按命令或平台约束需要补读。 | 先确认实际安装的 OpenCV/NPU runtime、SDK、模型格式和设备节点；不从 SoC 型号推断能力或声称推理已运行。记录 primary/辅助 `SKILL.md` 与 vision-inference 实际读取；其余平台页按需记录或写“条件未满足/正文足够，未补读”。 | 未运行。 |
 | 有界存储性能检查：询问如何测量生产设备写入性能。 | `storage-hardware-io` | 必读 primary `SKILL.md`。只有需要 NVMe/PCIe 健康命令、字段或平台约束时读 `storage-hardware-io/references/pcie-raid.md`。若问题是数据库或持久化策略而非块设备性能，再辅助 `data-storage-embedded`；需要文件系统命令/字段时再读 `data-storage-embedded/references/generic-linux.md`。 | 先确认设备、文件系统、挂载点、空闲空间与当前负载；建议有字节/时间上限的普通文件测试，不将原始块设备作为目标。记录 primary/辅助 `SKILL.md`，以及按需参考页的实际读取或未补读状态。 | 未运行。 |
-| 驱动异步卸载：work、timer、中断处理程序或回调可能继续访问驱动状态时，询问能否卸载。 | `linux-device-drivers` | 必读 `linux-device-drivers/references/lifecycle-and-context.md`。若主要涉及 DMA 映射、缓存同步或 ownership，再读取 `linux-device-drivers/references/io-and-dma.md`。 | 指出停止新工作并同步退出的顺序，先解除异步访问再释放其状态；不把 `rmmod` 当作充分保障。记录实际读取的驱动参考文件。 | 未运行。 |
-| DMA 所有权：询问 CPU 与设备如何共享一个 streaming DMA 缓冲区。 | `linux-device-drivers` | 必读 `linux-device-drivers/references/io-and-dma.md`。 | 区分 coherent/streaming 映射、DMA API 和方向，说明映射、所有权交接、同步和解除映射；不假定 DMA 完成等于 CPU 缓存已同步。记录 io-and-dma 的实际读取证据。 | 未运行。 |
+| 驱动异步卸载：work、timer、中断处理程序或回调可能继续访问驱动状态时，询问能否卸载。 | `linux-device-drivers` | 必读 primary `linux-device-drivers/SKILL.md` 完整正文，再读 `linux-device-drivers/references/lifecycle-and-context.md`。若主要涉及 DMA 映射、缓存同步或 ownership，再读取 `linux-device-drivers/references/io-and-dma.md`。 | 指出停止新工作并同步退出的顺序，先解除异步访问再释放其状态；不把 `rmmod` 当作充分保障。记录实际读取的驱动参考文件。 | 未运行。 |
+| DMA 所有权：询问 CPU 与设备如何共享一个 streaming DMA 缓冲区。 | `linux-device-drivers` | 必读 primary `linux-device-drivers/SKILL.md` 完整正文，再读 `linux-device-drivers/references/io-and-dma.md`。 | 区分 coherent/streaming 映射、DMA API 和方向，说明映射、所有权交接、同步和解除映射；不假定 DMA 完成等于 CPU 缓存已同步。记录 io-and-dma 的实际读取证据。 | 未运行。 |
+
+
+## 0.2.1 混合证据回归
+
+原始教学输入见 `fixtures/routing-review-021.json`。每项先取得 primary 正文，辅助与参考仍按真实证据触发；以下是评判条件，不是预填的原生调用结果。
+
+| 输入 | 主技能与条件参考 | 观察标准 | WorkBuddy 原生结果 |
+|---|---|---|---|
+| epoll 服务无响应，socket fd/CLOSE_WAIT 同窗口增长，暂无 OOM/CPU 证据 | networking 为 socket 生命周期主线；需要应用线程/事件循环证据时补 debug 与 app-runtime | 不只按 epoll 一词分流；不直接调大 fd 限额；区分正常等待、关闭生命周期和流量负载 | 未运行 |
+| socket/fd 稳定，已入队请求未继续消费，线程在条件变量等待 | debug 为主，读取 app-runtime；网络有新的异常证据才补 networking | 核对谓词、生产者/通知与锁，不把 pthread_cond_wait 本身判为死锁 | 未运行 |
+| SIM ready 但蜂窝持续寻找网络，信号值不可知，缺少精确模块资料 | wireless 为注册/无线状态主线；需解释 AT 响应时补 protocols 和精确模块手册 | 区分 SIM、注册、信号可用性与数据上下文；不可知信号不当成实测弱信号，不先猜 APN | 未运行 |
+| 蜂窝已注册，更换 SIM 后数据上下文激活失败，仍沿用旧项目 APN | protocols 为上下文/APN 语义主线；只有注册/无线链路异常证据才补 wireless | 取得完整错误、准确模块/运营商配置与上下文身份，注册成功不等于数据链路成功，不盲设通用 APN | 未运行 |

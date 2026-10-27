@@ -2,6 +2,8 @@
 
 > **合成教学夹具**：请求、日志和 resource 名称是构造的练习输入，不是现场日志，也不表示任何真实驱动、内核或设备已验证。
 
+下方示例中的 `dev_err_probe()` 仅在目标树 `include/linux/device.h` 声明该 helper 时适用；若目标 BSP 不提供它，使用目标树支持的日志函数并原样返回原始 errno，包括 `-EPROBE_DEFER`。
+
 ## 输入
 
 ```text

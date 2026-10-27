@@ -1,0 +1,18 @@
+[
+  {
+    "id": "epoll_socket_growth",
+    "request": "嵌入式 Linux 网关的 epoll 服务不再响应。10分钟内进程fd从120增到900，ss显示同一进程的CLOSE_WAIT连接持续增加；CPU占用低，日志没有OOM记录。该先检查什么，是否需要调大fd上限？没有目标板访问权限。所有数据都是教学构造。"
+  },
+  {
+    "id": "epoll_thread_wait",
+    "request": "嵌入式 Linux 网关服务无响应，fd和连接数稳定，未见socket队列或重传异常；应用日志显示请求已经入队但处理线程没有继续取队列，线程栈停在pthread_cond_wait。请给出需要补充的证据和定位步骤。没有目标板访问权限。所有数据都是教学构造。"
+  },
+  {
+    "id": "cellular_registration",
+    "request": "Linux设备的蜂窝模块一直未入网。合成记录：SIM READY，+CEREG:0,2，+CSQ:99,99。模块型号、固件和运营商资料暂缺。请判断应该从哪里排查，需要哪些补充信息。没有目标板访问权限。"
+  },
+  {
+    "id": "cellular_activation",
+    "request": "Linux设备的蜂窝模块合成记录显示+CEREG:0,1，但数据上下文激活失败；故障出现在更换SIM卡后，现有APN配置来自旧SIM的项目配置。尚无准确模块手册或完整错误码。请给出诊断顺序和修改前必须核对的内容。没有目标板访问权限。"
+  }
+]

@@ -12,7 +12,7 @@
 - `devm_*` 将资源释放绑定到设备解绑和 probe 失败，可简化常规资源回收。它不替你验证返回值，也不会自动停止设备 DMA、取消任意工作、关闭已注册的上层接口或等待用户回调。
 - 需要自定义清理时，根据目标内核 API 使用 `devm_add_action_or_reset()` 或显式错误标签。对于依赖顺序复杂的资源，明确注册/注销顺序，不依赖隐式 devres 栈顺序来完成硬件停机。
 - probe 失败前应撤回已经注册的子设备、类设备或用户接口。若 provider 返回 `-EPROBE_DEFER`，尽早返回；在注册子设备后 defer 可能造成重复探测循环。
-- 对资源依赖缺失使用 `dev_err_probe(dev, err, "...")`，避免把 defer 当普通错误重复打印，并保留可诊断的 defer reason。检查可用的 `devices_deferred` 调试信息。
+- 先检查目标树 `include/linux/device.h` 是否声明 `dev_err_probe()`。有该 API 时，用 `dev_err_probe(dev, err, "...")` 可避免把 defer 当普通错误重复打印，并记录 deferred reason；没有该 API 时，用目标树支持的日志函数并原样返回 errno，不要吞掉或改写 `-EPROBE_DEFER`。检查目标配置是否提供 `devices_deferred` 调试信息。
 
 ## 解绑与异步执行者
 

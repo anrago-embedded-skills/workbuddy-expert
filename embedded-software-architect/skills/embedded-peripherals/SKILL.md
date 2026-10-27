@@ -111,16 +111,20 @@ tr '\0' '\n' < /proc/device-tree/model
 
 ## 运行时工具
 
-以下命令在目标板 Linux shell 运行，采用 libgpiod 2.x 语法；较旧 BSP 先查看 `--version` 和对应版本的 `--help`。`gpiodetect`、`gpioinfo` 和 `gpioget` 用于查询；只有确认线路未由内核/其他进程使用、且任务允许改变信号时才运行会驱动线路的 `gpioset`。参数格式见 [libgpiod 命令行工具文档](https://libgpiod.readthedocs.io/en/master/gpio_tools.html)。
+以下命令在目标板 Linux shell 运行，采用 libgpiod 2.x 语法；较旧 BSP 先查看 `--version` 和对应版本的 `--help`。`gpiodetect` 枚举 GPIO chip，`gpioinfo` 查看线路信息、方向和 consumer；它们不读取逻辑电平。`gpioget` 会请求线路并读取逻辑值。libgpiod 2.3.1 默认把所请求线路配置为 input；只有目标版本 `gpioget --help` 确认提供 `--as-is`、且已确认该线路可被请求时，才用它保持当前方向。`--as-is` 不会让线路请求变成被动查询；请求仍可能与内核或其他进程的 consumer 冲突。确认目标线路可安全读取后，才运行 `gpioget`。只有确认线路未被内核/其他进程使用且任务允许驱动信号时，才运行会设置输出的 `gpioset`。参数格式见 [libgpiod 2.3.1 gpioget 文档](https://libgpiod.readthedocs.io/en/v2.3.1/gpioget.html)、[gpioinfo 文档](https://libgpiod.readthedocs.io/en/v2.3.1/gpioinfo.html) 和 [gpiodetect 文档](https://libgpiod.readthedocs.io/en/v2.3.1/gpiodetect.html)。
 
 ```sh
 gpiodetect
 gpioinfo --chip gpiochip0
-gpioget --chip gpiochip0 LINE_NAME
+# First confirm the target version and whether this option is supported.
+gpioget --version
+gpioget --help
+# Only when the line can be requested without disrupting its owner or circuit.
+gpioget --as-is --chip gpiochip0 LINE_NAME
 gpioset --chip gpiochip0 LINE_NAME=1
 ```
 
-libgpiod 2.x 的 `0`/`1` 表示逻辑 inactive/active；物理高低电平还取决于线路极性。`gpioset` 会在进程存活期间持有线路，进程退出后线路值可能恢复。不要驱动已被内核 consumer 占用的线路。旧版 GPIO sysfs ABI 已弃用；使用 character-device 工具或所属子系统。
+libgpiod 2.x 的 `0`/`1` 表示逻辑 inactive/active；物理高低电平还取决于线路极性。`--as-is` 只保留方向，不避免请求线路或其他请求副作用；若目标工具没有该选项，不要照抄命令，应按目标版本帮助和 API 核实语义。`gpioset` 会在进程存活期间持有线路，进程退出后线路值可能恢复。不要请求或驱动已被内核 consumer 占用的线路。旧版 GPIO sysfs ABI 已弃用；使用 character-device 工具或所属子系统。
 
 I2C 先在目标板检查 `i2cdetect -l`、运行时设备树和 `/sys/bus/i2c/devices/`。`i2cdetect -y BUS` 会主动探测地址，可能干扰设备；只在确认器件和总线允许扫描时使用。SPI 先检查 `/sys/bus/spi/devices/` 和驱动绑定状态，再决定是否测试用户态端点。
 

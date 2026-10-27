@@ -1,7 +1,9 @@
 {
   "name": "embedded-software-architect",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "Apache-2.0",
+  "author": { "name": "anrago-nathan" },
+  "homepage": "https://github.com/anrago-nathan/embedded-software-architect",
   "description": "General embedded Linux engineering with reusable BSP and driver workflows, multimedia, connectivity, storage, bounded evidence collection and board-level debugging",
   "agents": ["./agents/embedded-software-architect.md"],
 

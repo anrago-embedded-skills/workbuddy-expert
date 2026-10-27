@@ -29,46 +29,9 @@ description: |
 
 ---
 
-## 标准取证命令集
+## 命令与字段速查
 
-```bash
-# TARGET（目标机）：除非另有 HOST 标注，下列只读快照均在受影响系统执行
-# 1. 内核日志（OOM killer / Oops 线索）
-dmesg -T | tail -200
-dmesg | grep -iE "oom|killed process|out of memory"
-
-# 2. 内存全局
-cat /proc/meminfo
-free -h
-
-# 3. 各进程内存占用
-ps -eo pid,ppid,user,vsz,rss,stat,comm --sort=-rss | head -30
-cat /proc/*/status 2>/dev/null | grep -E "^Name|^Pid|^VmRSS|^VmSwap|^Threads"
-
-# 4. 进程内存映射（看谁在吃内存）
-cat /proc/<pid>/maps
-pmap -x <pid> | tail -30
-
-# 5. CMA 快照（仅在系统启用 CMA 时；数值本身不证明分配成功或失败）
-grep -E "CmaTotal|CmaFree" /proc/meminfo
-
-# 6. 高阶分配候选线索；需与失败日志中的 order / zone / GFP 约束一起看
-cat /proc/buddyinfo
-cat /proc/zoneinfo
-
-# 7. swap 是否实际配置
-swapon --show      # 查看当前已启用的 swap
-
-# 8. 文件系统（磁盘满也可能造成应用异常）
-df -h
-
-# 9. 进程所在 cgroup（按 /proc/<pid>/cgroup 选择对应挂载点和层级）
-cat /proc/<pid>/cgroup
-```
-
-对于 cgroup v2，找到进程所在的 cgroup 目录，对比事件前后的 `memory.current`、`memory.max` 和 `memory.events`。对于 cgroup v1，检查已挂载的 memory controller 及其限额和失败计数。具体路径和计数器取决于目标系统的 cgroup 版本与服务管理器。
-
----
+需要系统快照、cgroup、进程、Oops 获取、CPU/I/O 或设备字段命令时，按当前故障分支读取 [forensics-cheatsheet.md](references/forensics-cheatsheet.md)。指定进程的 PID/TID 验证、线程状态、长跑 RSS 与 thermal 采样统一见 [embedded-debug-workflow 的 process-sampling.md](../embedded-debug-workflow/references/process-sampling.md)。所有现场命令须明确在 HOST 或 TARGET 执行；权限、工具或字段不可用时记录具体原因。
 
 ## OOM 范围与候选方向
 
@@ -85,17 +48,12 @@ cat /proc/<pid>/cgroup
 
 ### 内存增长取证
 
-```bash
-for i in $(seq 1 10); do
-  echo "=== $i ==="; date; ps -o pid,rss,comm -p <pid>; sleep 60
-done
-```
-
-RSS 单调增长可作为泄漏或无界保留的候选线索，但不能证明根因：负载规模、页缓存、分配器 arena、文件映射和内核记账内存都可能产生不同趋势。判定原因前，先找出增长类别及其所有者。曲线趋于平稳符合有界缓存的表现，但不能单独排除其他类别仍有泄漏。
+跨时段的 RSS 增长可提示泄漏或无界保留，但也可能来自负载规模、页缓存、分配器 arena、文件映射或内核记账。按 [process-sampling.md](../embedded-debug-workflow/references/process-sampling.md) 的有界 sampler 观察同一进程；若要定性 OOM，还需对照相同时间窗内核日志、进程 cgroup 归属、适用的祖先限制和事件计数。只有 RSS 曲线不能判定泄漏，曲线趋稳也不能排除其他类别继续增长。
 
 ### 分配约束与全局余量
 
 ```bash
+# TARGET：仅在 procfs 可读时检查全局内存快照
 cat /proc/meminfo | grep -E "MemFree|MemAvailable|Slab|SReclaimable"
 ```
 
@@ -107,7 +65,7 @@ cat /proc/meminfo | grep -E "MemFree|MemAvailable|Slab|SReclaimable"
 
 ## 未配置 swap 时的注意事项
 
-部分嵌入式系统未配置 swap。用 `swapon --show` 或 `/proc/swaps` 查看当前实际状态：
+部分嵌入式系统未配置 swap。在 TARGET 上用 `swapon --show` 或读取 `/proc/swaps` 查看当前状态；命令/文件不可用时记录具体原因：
 
 - `SwapTotal: 0` 表示当前没有配置 swap，不能据此判断全局内存耗尽，也不能解释某次进程被杀。
 - 没有 swap 时无法通过换页回收匿名内存，但 OOM 仍可能由 memcg 限额或受约束分配触发。
@@ -115,126 +73,39 @@ cat /proc/meminfo | grep -E "MemFree|MemAvailable|Slab|SReclaimable"
 
 ---
 
-## 「进程在但应用假活」
+## 进程存在但没有响应
 
-这比崩溃更隐蔽——进程还在，但不响应。常见原因：
-
-| 状态 | 含义 | 检查 |
-|---|---|---|
-| `T` (Stopped) | 作业控制停止 | `cat /proc/<pid>/status \| grep State` |
-| `t` (Tracing stop) | 当前处于 ptrace tracing stop | 同上，并检查 `TracerPid` |
-| `Z` (Zombie) | 已退出但父进程未回收 | `ps -ef \| grep defunct` |
-
-```bash
-cat /proc/<pid>/status | grep -E "^State|^TracerPid"
-```
-
-`TracerPid` 非 0 表示有 tracer 附加，但本身不表示任务已停止。应与 `State` 一起判断：小写 `t` 表示 tracing stop，大写 `T` 表示 job-control stop。多线程进程的线程状态可能不同，可查看相关 `/proc/<pid>/task/<tid>/status`。
-
----
+指定进程/线程的 PID/TID 命令参数和状态观察统一见 [process-sampling.md](../embedded-debug-workflow/references/process-sampling.md)。`TracerPid` 非零表示有 tracer 附加，不等于任务停止；与 `State` 联读：`t` 是 tracing stop、`T` 是 job-control stop、`Z` 是已退出但未回收。多线程进程需按证据检查相关 TID；等待点和系统调用只是观测，不单独证明死锁。
 
 ## Kernel Oops 符号化
 
-### 症状特征
+**看到 Oops 或 panic 时先保留现场。** 从 TARGET 获取的日志及其构建身份必须与 HOST 上待解码的未 strip `vmlinux`、模块和源码完全匹配；源码行解码需要匹配的 `CONFIG_DEBUG_INFO`。`System.map` 只含内核符号地址，不能提供源码行。解释绝对地址时应考虑运行时重定位/KASLR，使用目标运行时偏移和匹配的解码工具，不要凭符号地址任意相减。构建信息或调试数据缺失时，报告未解析的栈帧。
 
-```
-[ 123.456] BUG: kernel NULL pointer dereference
-[ 123.456] Unable to handle kernel ...
-[ 123.456] Internal error: Oops: ...
-[ 123.456] Call trace:
-```
-
-**看到 Oops 就停手，先取证。**
-
-### 离线符号化流程（在可访问构建产物的主机上执行）
-
-```bash
-# HOST: 从 TARGET 通过 SSH 读取日志；重定向会将文件保存在主机
-ssh root@<board> 'dmesg -T' > ./oops.txt
-
-# 另一种方式：如果日志已保存在目标机上，改用 scp 传到主机；不要把它当作上面 SSH 命令的后续步骤：
-# scp root@<board>:/tmp/oops.txt ./oops.txt
-
-# 2. HOST: 选择与运行内核和模块匹配的构建产物
-#    保留带 CONFIG_DEBUG_INFO 的未 strip vmlinux 和匹配的模块 .ko 文件。
-
-# 3. HOST: 查看调用栈
-grep -A20 "Call trace" ./oops.txt
-#    形如：[<c010a1b8>] (unwind_backtrace) from [<c010a2cc>] (show_stack+0x10/0x14)
-
-# 4. HOST: 使用匹配内核源码树中的解码脚本
-./scripts/decode_stacktrace.sh ./vmlinux /path/to/kernel/source /path/to/modules < ./oops.txt
-```
-
-**要点**：
-- 内核映像必须与目标机当前运行的构建完全匹配；仅源码版本相同还不够。源码行解码需要匹配的、未 strip 且带 `CONFIG_DEBUG_INFO` 的 `vmlinux`。模块栈帧需要相同构建的模块文件和调试信息。
-- `System.map` 是内核符号地址表，可辅助解析符号名，但本身不含源码行信息，不能替代 `vmlinux` 调试信息。
-- 解释绝对地址时要考虑运行时重定位/KASLR。使用目标机运行时偏移及匹配的内核解码工具，不要任意用符号地址做减法。
-- 目标机负责提供日志；主机使用匹配的构建树和产物解码。若产物或调试信息缺失，应说明哪些栈帧仍无法解析。
-
----
+若日志还未导出，只有在目标 SSH 配置、权限与采集通道都已确认时才使用 [forensics-cheatsheet.md](references/forensics-cheatsheet.md) 中的 HOST 采集示例；否则标注 Oops 日志 unavailable，不猜目标主机或写入路径。
 
 ## 性能瓶颈定位
 
-根据当前最强证据选择下一项测量。温度曲线可能直接指向降频；分配失败可指向内存约束；持续增长的 `Send-Q` 可提示传输路径问题。证据已定位问题时，无需先排除无关层。
+按最强观测选择下一项测量，不要求先排除无关层。进程级 CPU/RSS 或传感器长期趋势需要先加载 [process-sampling.md](../embedded-debug-workflow/references/process-sampling.md)；具体工具、字段与前置条件见 [forensics-cheatsheet.md](references/forensics-cheatsheet.md)。
 
-### 1. CPU
+### CPU
 
-```bash
-top -H                      # 按线程看
-pidstat -p <pid> 1          # 单进程
-vmstat 1                    # 看 r（就绪队列）和 cs（上下文切换）
-```
+确认单核利用率、任务亲和性和 runnable 队列是否与响应退化同一时间出现。单核接近 100% 是该核可能饱和的线索，不代表系统所有核都饱和；上下文切换多可能来自锁竞争、唤醒或正常并发，需跟踪区分。
 
-- 单核接近 100% 是该核可能饱和的线索；结合任务亲和性、有效工作量和 per-CPU 负载确认。
-- 上下文切换很多可能来自锁竞争、频繁唤醒或正常高并发；用锁/调度跟踪进一步区分。
-- runnable 队列较长表示存在 CPU 调度压力；需结合每核利用率和任务可运行状态判断。
+### 内存带宽
 
-### 2. 内存带宽
+多路缩放和格式转换等场景中，内存带宽可能先于 CPU 成为瓶颈。若目标内核支持硬件计数器，比较同一工作负载下的 cache/bandwidth 事件；采集工具和计数器缺失时记录 unavailable。
 
-```bash
-perf stat -e cache-misses,cache-references -- <command> [args]   # 需内核支持
-```
+### I/O
 
-多路缩放/格式转换密集场景，**内存带宽常先于 CPU 成为瓶颈**。
+结合设备队列、吞吐、延迟、内核错误和同步写入时长判断。单个 `%util` 或 `await` 值不足以证明设备故障；存储类型与驱动会影响这些指标的解释。
 
-### 3. IO
+### 温度与降频
 
-```bash
-iostat -x 1                 # %util、await
-vmstat 1                    # bi/bo
-dmesg | grep -i slow
-```
-
-### 4. 温度与降频（易误判）
-
-```bash
-cat /sys/class/thermal/thermal_zone*/temp
-cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq
-```
-
-**关键**：过热降频会让性能问题「跑一会儿就变慢」，**极易被误判为内存泄漏**。先查温度再下结论。
-
----
+温度曲线和频率变化可能解释“运行一段时间后变慢”。读取热区时使用统一 sampler，保留每个 zone 的 `type` 和原始值；只有目标 BSP/驱动映射已确认时才赋予具体传感器含义。标准 thermal sysfs `temp` 单位为 millidegree Celsius，不可将未知 vendor 字段套用该单位，也不可默认 thermal zone 0 是 CPU。
 
 ## 长跑测试
 
-复现长时间问题时，应覆盖触发窗口并记录采样时长。按 Ctrl-C 停止采样；短时间未复现只说明该观察区间内未出现问题。
-
-```bash
-while true; do
-  echo "$(date) mem=$(free -m | awk '/Mem:/{print $3}') \
-        rss=$(ps -o rss= -p <pid>) \
-        temp=$(cat /sys/class/thermal/thermal_zone0/temp)"
-  sleep 300
-done | tee /tmp/longrun.log
-```
-
-选择可写且空间充足的日志目录。采样中的相关性只能作为线索；应结合事件时序和资源证据判断原因。
-
-记录到日志，出问题时能回看趋势，定位恶化起点。
-
----
+采样应覆盖实际触发窗口，报告间隔、持续时长和目标身份。指定进程的 RSS、系统 load average 与 thermal 使用唯一的 [process-sampling.md](../embedded-debug-workflow/references/process-sampling.md) 采样器：最多 121 行、5 秒间隔、默认输出当前终端、不创建或覆盖文件。它不解析 `top` 输出列，也不把 load average 当 CPU 利用率。时间窗口内没有复现只能说明该窗口内未出现故障。
 
 ## 边界与注意
 

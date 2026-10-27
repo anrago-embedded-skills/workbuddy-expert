@@ -1,6 +1,6 @@
 # 嵌入式 Linux 证据采集
 
-[collect-evidence.sh](../scripts/collect-evidence.sh) 提供不改变设备运行状态、有限大小的环境、内核日志和进程快照，并写入指定的新报告目录。它保存现场数据供后续分析，不会自动诊断 OOM、内存泄漏或故障根因。
+[collect-evidence.sh](../scripts/collect-evidence.sh) 提供不改变设备运行状态、有限大小的环境、内核日志和进程快照，并写入指定的新报告目录。输出路径按 Unix 字面量处理，合法文件名中的反斜杠会保留；控制字符路径不支持。它保存现场数据供后续分析，不会自动诊断 OOM、内存泄漏或故障根因。
 
 ## 在目标 Linux 上采集
 

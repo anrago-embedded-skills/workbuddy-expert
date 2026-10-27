@@ -20,7 +20,7 @@ Read this ledger before every new debugging, implementation, deployment, or vali
 
 ### E002 Multi-hunk documentation patch used stale context
 
-- **Symptom**: Multiple domain-worker patches and asserted replacements, including storage moves and a later display-table edit, were rejected at mismatched surrounding text; the guards prevented partial changes
+- **Symptom**: Multiple domain-worker patches and asserted replacements, including storage moves, a display-table edit and a later network-prose replacement, were rejected at mismatched surrounding text; the guards prevented partial changes
 - **Cause**: The patch grouped edits around guessed exact tail text rather than the current file
 - **Lesson**: Read current lines and use smaller verified hunks for independent document corrections
 - **Prevention check**: Before editing a section verify its exact contents; after rejection inspect diff before retry. If the same mismatch repeats, construct edits from freshly read text and assert a unique replacement match.
@@ -97,10 +97,10 @@ Read this ledger before every new debugging, implementation, deployment, or vali
 
 ### E013 Frontmatter check assumed an unavailable YAML dependency
 
-- **Symptom**: A worker validation command failed before parsing files because Python PyYAML was not installed
+- **Symptom**: A worker validation command failed before parsing files because Python PyYAML was not installed; a later network-doc check assumed a python alias that was absent and succeeded after rerunning with python3
 - **Cause**: The environment dependency was assumed rather than checked; prior successful checks used Ruby YAML
 - **Lesson**: Distinguish missing validation tooling from invalid content and reuse available parsers without installing unnecessary packages
-- **Prevention check**: Use Python standard-library fixture tests and the installed Ruby YAML.safe_load for full frontmatter parsing; note unavailable PyYAML in dispatch context
+- **Prevention check**: Use the documented python3 command, Python standard-library fixture tests and installed Ruby YAML.safe_load for full frontmatter parsing; note unavailable PyYAML in dispatch context
 
 ### E014 Bounded kernel capture lost recent events and producer failure status
 
@@ -125,7 +125,7 @@ Read this ledger before every new debugging, implementation, deployment, or vali
 
 ### E017 Generic debug examples retained non-executable placeholders and metric assumptions
 
-- **Symptom**: Content review found shell examples containing literal angle-bracket PID/board placeholders, a fixed thermal_zone0 temperature, and procps-dependent top field parsing; adjacent IPC statements overstated what blocked calls and zombies prove
+- **Symptom**: Content review found shell examples containing literal angle-bracket PID/board placeholders, a fixed thermal_zone0 temperature, and procps-dependent top field parsing; adjacent IPC statements overstated what blocked calls and zombies prove. A later review found the same unsafe examples still duplicated in perf and debug reference pages after the debug entrypoint was fixed
 - **Cause**: General workflow additions did not fully align older examples with the new command and evidence contracts
 - **Lesson**: Review the actual example syntax and metric identity, not only the surrounding new policy; blocked calls are observations rather than root-cause proof
 - **Prevention check**: Use validated PID/TID variables, explicit HOST/TARGET inputs and recovery prerequisites, identify thermal zone type/units, and qualify tool-specific columns and IPC inference
@@ -157,3 +157,45 @@ Read this ledger before every new debugging, implementation, deployment, or vali
 - **Cause**: Confirmed difference was only avatars/.gitkeep, which the official packager deliberately excludes. The orchestration printed the result without checking exit_code before the dependent step
 - **Lesson**: Model the official payload inclusion rules when binding an archive to Git, and inspect every validation result before a dependent mutation
 - **Prevention check**: Report ZIP/tree set differences, apply the exact documented exclusions, verify every included blob/mode, and stop dependent operations on any unexpected nonzero tool result
+
+### E022 awk variable decoding escaped the collector output directory
+
+- **Symptom**: An offline fixture using a literal out\057escape directory wrote a truncation flag to a pre-existing out/escape directory and marked a 501-byte input clipped to 241 bytes as collected
+- **Cause**: awk -v decodes backslash escapes in its assigned value; shell quoting did not preserve the literal output path through this second parser
+- **Lesson**: A safely quoted shell argument can still be interpreted by the receiving language; preserve literal paths at every boundary
+- **Prevention check**: Add regressions for literal backslash/octal-looking paths across file and mocked dmesg capture, assert no outside writes and accurate truncation state, and pass marker paths through a command-local environment variable
+
+### E023 GPIO query terminology hid a direction-changing request
+
+- **Symptom**: Peripheral guidance classified default gpioget as a query while only gpioset was labeled state-changing
+- **Cause**: The command's read-oriented name was taken as a side-effect guarantee; default input-direction requests were not checked against libgpiod documentation
+- **Lesson**: Distinguish status inspection from line acquisition and configuration, even when a command returns a value
+- **Prevention check**: Verify target-version request semantics and --as-is availability; state direction/acquisition effects and preserve hardware-specific limits
+
+### E024 Diagnostic inspection used an invalid search expression
+
+- **Symptom**: A read-only rg inspection in the diagnostic cleanup worker failed with a malformed regular expression; it did not change files
+- **Cause**: The inspection pattern's regex syntax was invalid
+- **Lesson**: Separate a failed inspection command from a source defect and verify the query before interpreting its absence of results
+- **Prevention check**: Prefer rg -F for literal placeholder/path searches; check regex syntax and rerun a corrected query before drawing conclusions
+
+### E025 Shared diagnostic setup introduced an interactive dependency
+
+- **Symptom**: Independent review found the new canonical PID/TID setup used stdin prompts, which can block a noninteractive command tool even when process IDs are already known
+- **Cause**: A manual terminal workflow was used as the shared basis for agent-executed command examples without testing the stdin contract
+- **Lesson**: Reusable diagnostic setup must consume explicit evidence-confirmed parameters and fail fast rather than wait for human input
+- **Prevention check**: Use TARGET_PID and optional TARGET_TID, guard preparation failures, and test invalid configuration with an open unwritten stdin pipe before any procfs access
+
+### E026 Offline observer read a process instruction outside its input boundary
+
+- **Symptom**: A candidate observer disclosed reading using-superpowers before following its subagent-stop instruction, despite a package-and-request-only observation brief
+- **Cause**: Generic process-skill discovery was applied before the observer's bounded read policy
+- **Lesson**: Disclose protocol deviations and treat such output as an auxiliary observation rather than a controlled efficacy benchmark
+- **Prevention check**: Explicitly exempt dispatched observers from external process-skill reads, use fresh contexts and frozen packages, and preserve raw selections instead of adjusting results to expected labels
+
+### E027 Unstaged whitespace checks omitted new reference files
+
+- **Symptom**: Both commit gates stopped on extra blank lines at EOF in two newly added networking references; earlier git diff --check runs had passed
+- **Cause**: Untracked files are absent from unstaged git diffs, so those checks did not cover the new reference files until staging
+- **Lesson**: A clean unstaged diff is not a whitespace check of the full prospective commit
+- **Prevention check**: Check the staged diff before every commit and validate final-newline normalization for new files; regenerate and reverify the archive whenever packaged bytes change

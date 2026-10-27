@@ -22,7 +22,7 @@
 | 已绑定但 I/O 异常 | 请求/完成边界、IRQ/work 状态、MMIO/DMA 映射和硬件协议 | 从最小操作路径取证；DMA 见[案例](cases/streaming-dma-ownership.md) |
 | unbind/remove 卡住或释放后崩溃 | blocked task stack、锁依赖、重新排队者、open fd 和 IRQ/DMA 停止证据 | 拆解退出顺序与对象所有权；见[异步 teardown 案例](cases/async-teardown-deadlock.md) |
 
-`dev_err_probe()` 会保留错误并为 `-EPROBE_DEFER` 设置 deferred reason；目标内核支持时读取 `devices_deferred`。先确认问题在哪个分支，再改代码，避免仅追加日志或改 compatible 猜测。
+只有目标树 `include/linux/device.h` 声明 `dev_err_probe()` 时，才使用它记录 probe 错误并为 `-EPROBE_DEFER` 设置 deferred reason。若目标 BSP 没有此 API，使用目标树支持的日志函数并原样返回原始 errno；不要吞掉或改写 defer。`devices_deferred` 也仅在目标内核配置提供时读取。先确认问题在哪个分支，再改代码，避免仅追加日志或改 compatible 猜测。
 
 ## 最小实现、构建与回归
 

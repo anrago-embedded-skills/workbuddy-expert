@@ -150,11 +150,13 @@ qt.scenegraph.renderloop.time: 16.7 ms
 |---|---|---|
 | 过多 layer/effect | GPU 带宽打满 | 合并 layer，减少 `ShaderEffect` |
 | 频繁纹理上传 | GPU 占用高、帧率低 | 图片预加载，避免运行时创建纹理 |
-| JS 逻辑在主线程 | 帧率抖动 | 移到 `Worker` |
+| CPU-heavy 的独立 QML JavaScript 计算运行在主线程 | 帧率抖动 | 需要时移入 `WorkerScript`；通过消息传递数据，worker 无法直接访问 QML item 或 `QQmlContext` |
 | 隐藏但仍工作的 item | 场景仍执行绑定/动画或保留资源 | 按需求用 `visible: false`，并单独暂停不需要的动画/数据工作 |
 | 高分屏渲染 | 填充率瓶颈 | 降低窗口分辨率 |
 
 **关键**：`opacity: 0` 的子树可能被场景图裁剪掉绘制，但绑定、动画、定时器和资源生命周期仍可能继续工作；如果需要停掉可见性相关处理，显式设置 `visible: false` 并按需暂停动画或数据更新。
+
+QML `WorkerScript` 在独立线程和 JavaScript context 中运行脚本，通过 `sendMessage()` / `onMessage()` 与 QML 侧交换数据；它不能直接访问 QML item 的属性、方法或 `QQmlContext` 值。只把不依赖界面对象的计算移入 worker，并在 QML 线程应用返回结果。参见 [Qt WorkerScript 文档](https://doc.qt.io/qt-6/qml-qtqml-workerscript-workerscript.html)。
 
 ---
 
@@ -187,4 +189,5 @@ glxinfo -B
 - Qt for Embedded Linux (Qt 6.8), EGLFS integration selection and LinuxFB DRM dumb-buffer support: https://doc.qt.io/qt-6.8/embedded-linux.html
 - QQuickRenderControl (Qt 6.12), offscreen target and frame lifecycle: https://doc.qt.io/qt-6.12/qquickrendercontrol.html
 - Qt Quick scene graph adaptations, `QT_QUICK_BACKEND` versus `QSG_RHI_BACKEND`: https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations.html
+- Qt `WorkerScript` type, thread, context and message restrictions: https://doc.qt.io/qt-6/qml-qtqml-workerscript-workerscript.html
 - Rockchip RK3588 GPU specification (ARM64 platform fact only): https://www.rock-chips.com/uploads/pdf/2022.8.26/191/RK3588%20Brief%20Datasheet.pdf

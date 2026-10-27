@@ -137,7 +137,7 @@ Device Tree 匹配应将目标 binding 支持的 `compatible` 放入驱动 `.of_
 
 probe 没有执行时，分别检查运行节点及 `status`、父总线/控制器、内核配置、驱动注册、compatible、模块是否加载及 deferred-probe 状态。使用目标 binding 和 `dmesg` 区分“设备未枚举”“没有匹配”“模块未加载”“probe defer/失败”。compatible 匹配不代表硬件连线或资源描述正确。
 
-probe 依赖的时钟、regulator、reset、pinctrl、GPIO、IRQ、firmware 或 supplier device 尚未就绪时，保留 provider 错误；收到 `-EPROBE_DEFER` 就按规则返回。probe 诊断使用 `dev_err_probe()`。尽早 defer，避免注册子设备或用户接口后再 defer。参考 [内核驱动模型文档](https://docs.kernel.org/driver-api/driver-model/driver.html)。
+probe 依赖的时钟、regulator、reset、pinctrl、GPIO、IRQ、firmware 或 supplier device 尚未就绪时，保留 provider 错误；收到 `-EPROBE_DEFER` 就按规则返回。仅当目标树 `include/linux/device.h` 声明 `dev_err_probe()` 时使用该 helper 记录 probe 上下文和 deferred reason；较旧或裁剪过的 BSP 若没有此 API，使用目标树支持的日志函数并原样返回 errno，尤其不要吞掉或改写 `-EPROBE_DEFER`。不要只按版本号假设该 helper 存在，因为厂商树可能回移植 API。尽早 defer，避免注册子设备或用户接口后再 defer。参考 [内核驱动模型文档](https://docs.kernel.org/driver-api/driver-model/driver.html) 与 [`dev_err_probe()` 文档](https://docs.kernel.org/driver-api/infrastructure.html)。
 
 本节用于确认运行时节点、compatible、驱动注册和模块加载状态。节点已存在而问题落在驱动匹配表、probe 错误处理或生命周期时，转到 [linux-device-drivers](../linux-device-drivers/SKILL.md)；板级资源属性或总线配置不符时，转到 [embedded-peripherals](../embedded-peripherals/SKILL.md)。
 

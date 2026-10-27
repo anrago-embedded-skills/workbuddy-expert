@@ -1,5 +1,7 @@
 # WorkBuddy 专家包 · 嵌入式软件高级工程师
 
+作者：**anrago-nathan** · [GitHub](https://github.com/anrago-nathan)
+
 面向 **通用嵌入式 Linux** 工程的 WorkBuddy 专家包（Agent 型）。主干独立于厂商，架构、ABI 和硬件差异按目标 BSP/SDK 确认；ARM32/ARM64 示例不构成其他架构已验证的保证。
 
 专家代号**磐石**，定位是嵌入式软件高级工程师——BSP / 内核 / 驱动 / 多媒体链路 / Qt 渲染 / 板级取证排障。
@@ -114,9 +116,9 @@ python3 <expert-manager>/scripts/register_expert.py \
 
 ## 版本
 
-当前版本：**0.2.0**
+当前版本：**0.2.1**
 
-专家 ZIP 与 SHA-256 校验文件见 [v0.2.0 发布页](https://github.com/anrago-embedded-skills/workbuddy-expert/releases/tag/v0.2.0)。更新与验证范围见 [发布记录](docs/releases/0.2.0.md)。
+专家 ZIP 与 SHA-256 校验文件见 [v0.2.0 发布页](https://github.com/anrago-embedded-skills/workbuddy-expert/releases/tag/v0.2.1)。更新与验证范围见 [发布记录](docs/releases/0.2.1.md)。
 
 ## 许可
 
