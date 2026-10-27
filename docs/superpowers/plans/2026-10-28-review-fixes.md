@@ -21,7 +21,7 @@
 - [x] 新增混合证据路由场景，记录旧版/新版实际读取和回答观察，不从少量样本声称稳定提升。
 - [x] 独立审查与必要的定向修正完成，运行完整测试、YAML、引用、Shell 和差异检查。
 - [x] 两仓库专家包内容逐字节相同、作者与版本一致，保留目标仓库原 MIT LICENSE 和导入内容的 Apache 许可。
-- [ ] 官方打包、解压复验、CRC/文件/权限/源码比对通过；两仓库非强制推送、v0.2.1 发布与附件哈希核对完成。
+- [x] 官方打包、解压复验、CRC/文件/权限/源码比对通过；两仓库非强制推送、v0.2.1 发布与附件哈希核对完成。
 
 原头像保持既有内容及已披露的体积偏差。本次不把离线评测、静态检查或打包成功称为 WorkBuddy 原生加载、真实 SDK 构建、BusyBox 或板测通过。
 
@@ -45,3 +45,10 @@
 - 入口行数从 debug331/perf253/network394 变为104/124/39；详情迁移到条件参考，保留旧引用路径。没有用文件行数推断实际 token、时延或业务收益。
 
 定向观察之后仅清理两份新增网络参考页末尾的额外空行，未改动观察使用的技术内容；ZIP 随后重新生成并核对实际字节。
+
+## 实际双仓库发布结果
+
+- anrago-embedded-skills/workbuddy-expert：v0.2.1，源码提交 `39127396238fc1bb148796cf28b7907249e6bffe`，发布页 https://github.com/anrago-embedded-skills/workbuddy-expert/releases/tag/v0.2.1；远端标签与已核对提交一致，附件大小和 SHA-256 均匹配。
+- anrago-nathan/embedded-software-architect：v0.2.1，源码提交 `bcd92853ad38d5d029dadac17d8e99cb1e1a9915`，发布页 https://github.com/anrago-nathan/embedded-software-architect/releases/tag/v0.2.1；远端标签与已核对提交一致，附件大小和 SHA-256 均匹配。
+
+共同专家 Git 树 `9407caa2c88ca3f64b55b7549f5ff63b2c5cf73d`；ZIP SHA-256 `ca0dbef5e1ce3b18c139f4381d4e0f280bf59cc7bb0cd3660659d78c0427e72d`。0.2.0 历史标签和下载未改写，两个仓库许可证分别保留。
